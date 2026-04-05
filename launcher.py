@@ -2,8 +2,10 @@ import tkinter as tk
 import subprocess
 import threading
 import os
+import sys
 import webbrowser
 import time
+import signal
 
 # ── paths ───────────────────────────────────────────────────────────────────
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
@@ -30,39 +32,38 @@ server_proc   = None
 server_thread = None
 
 
+def _kill_proc_tree(proc):
+    """Kill proc and ALL its children on Windows using taskkill /F /T."""
+    if proc is None:
+        return
+    pid = proc.pid
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=3)
+    except Exception:
+        pass
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 class RoundedButton(tk.Canvas):
-    """
-    Canvas-based rounded button.
-
-    Width/height are stored as instance attributes and applied via
-    self.config() AFTER super().__init__() completes, avoiding the
-    Python 3.13 Tkinter bug where integer constructor args get
-    registered as widget command names.
-    """
-
     def __init__(self, parent, text, command,
                  bg=ACCENT, fg=BG, btn_width=180, btn_height=42, radius=8):
-        # 1. Create the Canvas with NO width/height — just colours and borders
-        super().__init__(
-            parent,
-            bg=SURFACE,
-            highlightthickness=0,
-            bd=0,
-        )
-        # 2. Store dimensions as plain Python attributes
-        self._bw     = btn_width
-        self._bh     = btn_height
-        self._bg     = bg
-        self._fg     = fg
-        self._cmd    = command
-        self._text   = text
-        self._r      = radius
-
-        # 3. Apply size AFTER the widget exists in Tk
+        super().__init__(parent, bg=SURFACE, highlightthickness=0, bd=0)
+        self._bw  = btn_width
+        self._bh  = btn_height
+        self._bg  = bg
+        self._fg  = fg
+        self._cmd = command
+        self._text = text
+        self._r   = radius
         self.config(width=self._bw, height=self._bh)
-
-        # 4. Draw and bind
         self._draw(bg)
         self.bind("<Enter>",           self._on_enter)
         self.bind("<Leave>",           self._on_leave)
@@ -74,17 +75,14 @@ class RoundedButton(tk.Canvas):
         self.create_arc(x2-2*r,  y1,      x2,     y1+2*r, start=0,   extent=90, style="pieslice", **kw)
         self.create_arc(x1,      y2-2*r,  x1+2*r, y2,     start=180, extent=90, style="pieslice", **kw)
         self.create_arc(x2-2*r,  y2-2*r,  x2,     y2,     start=270, extent=90, style="pieslice", **kw)
-        self.create_rectangle(x1+r, y1,   x2-r, y2,   **kw)
+        self.create_rectangle(x1+r, y1,   x2-r, y2, **kw)
         self.create_rectangle(x1,   y1+r, x2,   y2-r, **kw)
 
     def _draw(self, color):
         self.delete("all")
-        self._round_rect(1, 1, self._bw - 1, self._bh - 1, self._r,
-                         fill=color, outline="")
-        self.create_text(self._bw // 2, self._bh // 2,
-                         text=self._text,
-                         fill=self._fg,
-                         font=("Segoe UI Semibold", 10))
+        self._round_rect(1, 1, self._bw-1, self._bh-1, self._r, fill=color, outline="")
+        self.create_text(self._bw//2, self._bh//2, text=self._text,
+                         fill=self._fg, font=("Segoe UI Semibold", 10))
 
     def _on_enter(self, e):   self._draw(self._darken(self._bg, 20))
     def _on_leave(self, e):   self._draw(self._bg)
@@ -97,7 +95,7 @@ class RoundedButton(tk.Canvas):
     @staticmethod
     def _darken(hex_color, amount):
         h = hex_color.lstrip("#")
-        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        r, g, b = int(h[0:2],16), int(h[2:4],16), int(h[4:6],16)
         return f"#{max(0,r-amount):02x}{max(0,g-amount):02x}{max(0,b-amount):02x}"
 
     def configure_color(self, bg=None, fg=None, text=None):
@@ -136,9 +134,9 @@ class StatusDot(tk.Canvas):
         g = int(color[3:5], 16)
         b = int(color[5:7], 16)
         scale = 0.6 + 0.4 * abs(self._phase - 10) / 10
-        r2 = min(255, int(r * scale))
-        g2 = min(255, int(g * scale))
-        b2 = min(255, int(b * scale))
+        r2 = min(255, int(r*scale))
+        g2 = min(255, int(g*scale))
+        b2 = min(255, int(b*scale))
         self.delete("all")
         self.create_oval(2, 2, 10, 10, fill=f"#{r2:02x}{g2:02x}{b2:02x}", outline="")
         self._anim_id = self.after(80, lambda: self._pulse(color))
@@ -160,10 +158,10 @@ class App(tk.Tk):
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         w, h = 520, 590
-        self.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+        self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
     def _build_ui(self):
-        # ── header ────────────────────────────────────────────────────────────
+        # header
         header = tk.Frame(self, bg=SURFACE, height=64)
         header.pack(fill="x")
         header.pack_propagate(False)
@@ -181,13 +179,11 @@ class App(tk.Tk):
         tk.Label(header, text="Backend Launcher",
                  font=("Segoe UI", 9), fg=TEXT_MUTED, bg=SURFACE).place(x=61, y=35)
 
-        # ── divider
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
 
-        # ── status card
+        # status card
         status_frame = tk.Frame(self, bg=SURFACE2, pady=16)
         status_frame.pack(fill="x", padx=16, pady=(14, 0))
-
         row = tk.Frame(status_frame, bg=SURFACE2)
         row.pack(fill="x", padx=16)
 
@@ -206,7 +202,7 @@ class App(tk.Tk):
         self.url_label.bind("<Button-1>",
                             lambda e: webbrowser.open("http://localhost:8000/docs"))
 
-        # ── primary buttons
+        # primary buttons
         btn_frame = tk.Frame(self, bg=BG)
         btn_frame.pack(pady=16)
 
@@ -224,7 +220,7 @@ class App(tk.Tk):
         )
         self.stop_btn.pack(side="left", padx=6)
 
-        # ── secondary buttons
+        # secondary buttons
         btn_frame2 = tk.Frame(self, bg=BG)
         btn_frame2.pack()
 
@@ -240,7 +236,7 @@ class App(tk.Tk):
             bg=SURFACE2, fg=TEXT, btn_width=200, btn_height=40,
         ).pack(side="left", padx=6)
 
-        # ── log header
+        # log header
         log_header = tk.Frame(self, bg=BG)
         log_header.pack(fill="x", padx=16, pady=(14, 4))
         tk.Label(log_header, text="SERVER LOG",
@@ -250,7 +246,7 @@ class App(tk.Tk):
         clear_lbl.pack(side="right")
         clear_lbl.bind("<Button-1>", lambda e: self._clear_log())
 
-        # ── log box
+        # log box
         log_outer = tk.Frame(self, bg=SURFACE, bd=0,
                              highlightthickness=1, highlightbackground=BORDER)
         log_outer.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -311,7 +307,6 @@ class App(tk.Tk):
 
             global server_proc
             self._log("Starting uvicorn\u2026", "info")
-            self._set_status("running", "Server is running", "http://localhost:8000/docs")
             server_proc = subprocess.Popen(
                 [VENV_UVICORN, "app.main:app", "--reload",
                  "--host", "0.0.0.0", "--port", "8000"],
@@ -320,6 +315,7 @@ class App(tk.Tk):
                 text=True, bufsize=1,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
+            self._set_status("running", "Server is running", "http://localhost:8000/docs")
             self.start_btn.configure_color(bg=TEXT_FAINT)
             self.stop_btn.configure_color(bg=RED, fg=TEXT, text="\u25a0  Stop Server")
 
@@ -336,11 +332,9 @@ class App(tk.Tk):
                 )
                 self._log(line, tag)
 
+            # stdout closed — process is truly gone
             server_proc = None
-            self._set_status("idle", "Server is stopped", "")
-            self.start_btn.configure_color(bg=ACCENT, fg=BG, text="\u25b6  Start Server")
-            self.stop_btn.configure_color(bg=SURFACE2, fg=TEXT_MUTED, text="\u25a0  Stop Server")
-            self._log("Server stopped.", "warn")
+            self._reset_to_idle()
 
         server_thread = threading.Thread(target=run, daemon=True)
         server_thread.start()
@@ -352,12 +346,29 @@ class App(tk.Tk):
             return
         self._log("Stopping server\u2026", "warn")
         self._set_status("stopping", "Stopping\u2026", "")
-        server_proc.terminate()
+        self.stop_btn.configure_color(bg=TEXT_FAINT, fg=TEXT_FAINT, text="\u25a0  Stop Server")
+
+        proc = server_proc  # capture ref before it's cleared
+        def do_kill():
+            _kill_proc_tree(proc)
+            # Reset UI on the main thread after kill completes
+            self.after(0, self._reset_to_idle)
+            self.after(0, lambda: self._log("Server stopped.", "warn"))
+
+        threading.Thread(target=do_kill, daemon=True).start()
+
+    def _reset_to_idle(self):
+        global server_proc
+        server_proc = None
+        self._set_status("idle", "Server is stopped", "")
+        self.start_btn.configure_color(bg=ACCENT, fg=BG, text="\u25b6  Start Server")
+        self.stop_btn.configure_color(bg=SURFACE2, fg=TEXT_MUTED, text="\u25a0  Stop Server")
 
     def _on_close(self):
         global server_proc
         if server_proc:
-            server_proc.terminate()
+            self._log("Closing — killing server\u2026", "warn")
+            _kill_proc_tree(server_proc)
         self.destroy()
 
     # ── helpers ───────────────────────────────────────────────────────────────
