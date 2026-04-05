@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-05 23:33 CEST
+> Last updated: 2026-04-06 00:14 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -33,10 +33,12 @@
 | | → `lists`, `list_items` | ✅ | |
 | | → `tmdb_cache`, `sync_log` | ✅ | |
 | 2.5 | Write Alembic migration (`0001_initial_tables.py`) | ✅ | `backend/alembic/versions/0001_initial_tables.py` |
-| 2.6 | Apply migration → `cinemalist.db` created | ⏳ | Run `alembic upgrade head` locally |
+| 2.6 | Apply migration → `cinemalist.db` created | ⏳ | Run `alembic upgrade head` locally after `git pull` |
 | 2.7 | Build `run.py` helper script | ✅ | `backend/run.py` |
 | 2.8 | Build GUI launcher (`launcher.py`) with Start/Stop/Open Docs | ✅ | `/launcher.py` (17.9 KB) |
 | 2.9 | Add `start.bat` one-click startup script | ✅ | `/start.bat` |
+
+> **Note (2.6 — Alembic safe to re-run):** If you already ran `alembic upgrade head` before and then do `git pull`, running it again is **safe** — Alembic tracks which migrations have already been applied in the `alembic_version` table inside `cinemalist.db`. It will skip already-applied migrations and only run new ones. Your existing database and data are **never overwritten**. The command `alembic revision --autogenerate` creates a NEW file in `alembic/versions/` — it does not touch existing migration files.
 
 ---
 
@@ -46,7 +48,7 @@
 |---|---|---|---|
 | 3.1 | Create `app/services/tmdb.py` — search, detail, import | ✅ | `backend/app/services/tmdb.py` (7.6 KB) |
 | 3.2 | Implement cache-first logic (7-day TTL in `tmdb_cache`) | ✅ | Inside `tmdb.py` |
-| 3.3 | ~~Download + store poster images to `media/posters/`~~ | 🚫 | **Won't do** — posters are served via TMDb CDN URLs (`poster_url` computed field). This is the permanent approach. |
+| 3.3 | ~~Download + store poster images to `media/posters/`~~ | 🚫 | **Permanently won't do.** Posters are served directly via TMDb CDN: `https://image.tmdb.org/t/p/w500/{poster_path}`. The `poster_path` column is stored in the `movies` table. The frontend constructs the full URL dynamically. No local file storage needed. This is the permanent, final approach for the project. |
 | 3.4 | Write Pydantic schemas | ✅ | `schemas/movie.py`, `schemas/entry.py`, `schemas/stats.py`, `schemas/list.py` |
 | 3.5 | Build API router: `GET /api/search/tmdb?q=` | ✅ | `backend/app/api/search.py` |
 | 3.6 | Build API router: `POST /api/search/tmdb/import` | ✅ | `backend/app/api/search.py` |
@@ -178,16 +180,20 @@
         ├── main.py          ✅
         ├── models/          ✅ (all 11 ORM models)
         ├── schemas/
+        │   ├── common.py    ✅
         │   ├── movie.py     ✅
         │   ├── entry.py     ✅
-        │   ├── stats.py     ✅
-        │   └── list.py      ✅
+        │   ├── watch_event.py ✅
+        │   ├── list.py      ✅
+        │   ├── tag.py       ✅
+        │   ├── genre.py     ✅
+        │   └── stats.py     ✅
         ├── services/
         │   └── tmdb.py      ✅ (search, detail, cache, import)
         ├── api/
         │   ├── search.py    ✅ (TMDb search + import)
         │   ├── movies.py    ✅ (CRUD + filters)
-        │   ├── entries.py   ✅ (CRUD)
+        │   ├── entries.py   ✅ (CRUD + watch events)
         │   ├── genres.py    ✅
         │   ├── tags.py      ✅
         │   ├── lists.py     ✅
@@ -200,7 +206,7 @@
 > - `frontend/` — entire React + Vite app (Phase 4)
 > - `backend/tests/` — pytest suite (Phase 5)
 > - `backend/app/services/llm.py` — AI service (Phase 5)
-> - `cinemalist.db` — created on first `alembic upgrade head` run
+> - `cinemalist.db` — created on first `alembic upgrade head` run (local only, not in repo)
 
 ---
 
