@@ -1,40 +1,40 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Title, Text, SimpleGrid, Loader, Center, Stack, Group, ActionIcon, Tooltip } from '@mantine/core';
-import { IconHeart, IconRefresh } from '@tabler/icons-react';
-import { entriesApi } from '../api/client';
-import MovieCard from '../components/MovieCard';
+import { useState, useEffect } from 'react';
+import { Grid, Text, Loader, Center, Box } from '@mantine/core';
+import { IconHeart } from '@tabler/icons-react';
+import { api } from '../api/client';
+import PosterCard from '../components/PosterCard';
+import EmptyState from '../components/EmptyState';
 
 export default function FavouritesPage() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await entriesApi.list({ is_favorite: true, sort_by: 'rating', sort_dir: 'desc' });
-      setEntries(data);
-    } finally { setLoading(false); }
+  useEffect(() => {
+    api.getEntries({ favourites: true, limit: 100 })
+      .then(data => setEntries(Array.isArray(data) ? data : data.items ?? []))
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-
   return (
-    <>
-      <Group justify="space-between" mb="lg">
-        <Stack gap={0}>
-          <Title order={2} style={{ color: '#C9C9C9' }}>Favourites</Title>
-          <Text size="sm" c="dimmed">{entries.length} film{entries.length !== 1 ? 's' : ''}</Text>
-        </Stack>
-        <Tooltip label="Refresh"><ActionIcon variant="subtle" onClick={load} aria-label="Refresh"><IconRefresh size={16} /></ActionIcon></Tooltip>
-      </Group>
-      {loading ? <Center h={300}><Loader color="yellow" /></Center>
-        : entries.length === 0 ? (
-          <Center h={300}><Stack align="center"><IconHeart size={48} color="#424242" /><Text c="dimmed">No favourites yet — heart a film to add it here.</Text></Stack></Center>
-        ) : (
-          <SimpleGrid cols={{ base: 2, xs: 3, sm: 4, md: 5, lg: 6 }} spacing="md">
-            {entries.map(e => <MovieCard key={e.id} entry={e} onUpdate={load} />)}
-          </SimpleGrid>
-        )}
-    </>
+    <Box>
+      <Text fw={700} size="xl" mb="md" style={{ color: '#e2b04a' }}>Favourites</Text>
+      {loading ? (
+        <Center py={80}><Loader color="yellow" /></Center>
+      ) : entries.length === 0 ? (
+        <EmptyState
+          icon={IconHeart}
+          title="No favourites yet"
+          description="Open any movie and toggle the heart to mark it as a favourite."
+        />
+      ) : (
+        <Grid gutter="md">
+          {entries.map(e => (
+            <Grid.Col key={e.id} span={{ base: 6, xs: 4, sm: 3, md: 2 }}>
+              <PosterCard entry={e} />
+            </Grid.Col>
+          ))}
+        </Grid>
+      )}
+    </Box>
   );
 }

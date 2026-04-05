@@ -1,79 +1,78 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Title, Text, Group, Badge, Button, TextInput,
-  ActionIcon, Loader, Center, Stack, Wrap,
+  Group, Badge, Text, TextInput, Button, Box,
+  ActionIcon, Loader, Center, Wrap,
 } from '@mantine/core';
+import { IconTag, IconPlus, IconX } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-import { IconPlus, IconX, IconTag } from '@tabler/icons-react';
-import { tagsApi } from '../api/client';
+import { api } from '../api/client';
+import EmptyState from '../components/EmptyState';
 
 export default function TagsPage() {
-  const [tags, setTags]         = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [newTag, setNewTag]     = useState('');
-  const [creating, setCreating] = useState(false);
+  const [tags,    setTags]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newTag,  setNewTag]  = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try { setTags(await tagsApi.list()); }
-    catch (e) { notifications.show({ color: 'red', message: e.message }); }
-    finally { setLoading(false); }
+  useEffect(() => {
+    api.getTags()
+      .then(data => setTags(Array.isArray(data) ? data : data.items ?? []))
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-
-  const create = async () => {
+  async function create() {
     if (!newTag.trim()) return;
-    setCreating(true);
-    try { await tagsApi.create(newTag.trim()); setNewTag(''); await load(); }
-    catch (e) { notifications.show({ color: 'red', message: e.message }); }
-    finally { setCreating(false); }
-  };
+    try {
+      const t = await api.createTag({ name: newTag.trim() });
+      setTags(prev => [...prev, t]);
+      setNewTag('');
+    } catch (e) {
+      notifications.show({ message: e.message, color: 'red' });
+    }
+  }
 
-  const remove = async (id) => {
-    try { await tagsApi.delete(id); await load(); }
-    catch (e) { notifications.show({ color: 'red', message: e.message }); }
-  };
+  async function remove(id) {
+    await api.deleteTag(id);
+    setTags(prev => prev.filter(t => t.id !== id));
+  }
 
   return (
-    <>
-      <Title order={2} mb="lg" style={{ color: '#C9C9C9' }}>Tags</Title>
-      <Group mb="xl">
+    <Box>
+      <Text fw={700} size="xl" mb="md" style={{ color: '#e2b04a' }}>Tags</Text>
+
+      <Group mb="lg" gap="sm">
         <TextInput
-          placeholder="New tag (e.g. #slow-burn)…"
+          placeholder="New tag name…"
           value={newTag}
           onChange={e => setNewTag(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && create()}
-          style={{ flex: 1 }}
-          styles={{ input: { background: '#1a1a1a', border: '1px solid #2e2e2e', color: '#C9C9C9' } }}
+          styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
         />
-        <Button color="yellow" leftSection={<IconPlus size={14} />} loading={creating} onClick={create}>
-          Add Tag
-        </Button>
+        <Button leftSection={<IconPlus size={14} />} color="yellow" onClick={create} size="sm">Add</Button>
       </Group>
 
-      {loading ? <Center h={200}><Loader color="yellow" /></Center>
-        : tags.length === 0 ? (
-          <Center h={200}><Stack align="center"><IconTag size={48} color="#424242" /><Text c="dimmed">No tags yet.</Text></Stack></Center>
-        ) : (
-          <Group gap="sm">
-            {tags.map(tag => (
-              <Badge
-                key={tag.id}
-                size="lg"
-                variant="light"
-                color="yellow"
-                rightSection={
-                  <ActionIcon size="xs" variant="transparent" color="yellow" onClick={() => remove(tag.id)} aria-label={`Delete tag ${tag.name}`}>
-                    <IconX size={10} />
-                  </ActionIcon>
-                }
-              >
-                {tag.name}
-              </Badge>
-            ))}
-          </Group>
-        )}
-    </>
+      {loading ? (
+        <Center py={60}><Loader color="yellow" /></Center>
+      ) : tags.length === 0 ? (
+        <EmptyState icon={IconTag} title="No tags yet" description="Create tags to categorise your movies." />
+      ) : (
+        <Group gap="sm" wrap="wrap">
+          {tags.map(t => (
+            <Badge
+              key={t.id}
+              color="yellow"
+              variant="light"
+              size="lg"
+              rightSection={
+                <ActionIcon size="xs" color="yellow" variant="transparent" onClick={() => remove(t.id)}>
+                  <IconX size={10} />
+                </ActionIcon>
+              }
+            >
+              {t.name}
+            </Badge>
+          ))}
+        </Group>
+      )}
+    </Box>
   );
 }
