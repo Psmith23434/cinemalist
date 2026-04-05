@@ -1,12 +1,17 @@
-fastapi==0.115.12
-uvicorn[standard]==0.34.0
-sqlalchemy==2.0.40
-alembic==1.15.2
-python-dotenv==1.1.0
-httpx==0.28.1
-pydantic==2.11.1
-pydantic-settings==2.8.1
-python-multipart==0.0.20
-aiofiles==24.1.0
-Pillow==12.2.0
-aiosqlite==0.21.0
+# CinemaList backend dependencies
+# No versions pinned — pip will always install the latest stable release.
+# If you ever need to freeze exact versions (e.g. for a server deploy),
+# run: pip freeze > requirements-lock.txt
+
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+python-dotenv
+httpx
+pydantic
+pydantic-settings
+python-multipart
+aiofiles
+Pillow
+aiosqlite
