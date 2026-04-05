@@ -1,313 +1,221 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  Title, Text, Image, Group, Badge, Stack, Divider,
-  Rating, Textarea, Button, ActionIcon, Loader, Center,
-  Box, Paper, Tooltip, Select, NumberInput, Modal,
-} from '@mantine/core';
-import { DateInput } from '@mantine/dates';
-import { notifications } from '@mantine/notifications';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  IconHeart, IconHeartFilled, IconTrash, IconEdit,
-  IconCheck, IconPlus, IconCalendar, IconDeviceTv,
+  Grid, Image, Text, Badge, Group, Rating, Textarea, Button,
+  Box, Stack, Loader, Center, ActionIcon, Divider, Switch,
+  NumberInput, Tooltip, Card,
+} from '@mantine/core';
+import { DateInput } from '@mantine/dates';
+import '@mantine/dates/styles.css';
+import {
+  IconArrowLeft, IconHeart, IconHeartFilled, IconTrash,
+  IconDeviceFloppy, IconCalendarPlus, IconEye,
 } from '@tabler/icons-react';
-import { entriesApi, notesApi, watchApi } from '../api/client';
-
-const POSTER_BASE = 'https://image.tmdb.org/t/p/w500';
+import { notifications } from '@mantine/notifications';
+import { api, posterUrl } from '../api/client';
 
 export default function MovieDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [entry, setEntry]         = useState(null);
-  const [notes, setNotes]         = useState([]);
-  const [watches, setWatches]     = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [noteText, setNoteText]   = useState('');
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editRating, setEditRating] = useState(null);
+  const [entry,   setEntry]   = useState(null);
+  const [watches, setWatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [e, n, w] = await Promise.all([
-        entriesApi.get(id),
-        notesApi.list(id),
-        watchApi.list(id),
-      ]);
-      setEntry(e);
-      setNotes(n);
-      setWatches(w);
-      setEditRating(e.rating);
-    } catch (err) {
-      notifications.show({ color: 'red', message: err.message });
-    } finally {
-      setLoading(false);
-    }
+  // editable fields
+  const [rating,    setRating]    = useState(0);
+  const [notes,     setNotes]     = useState('');
+  const [isFav,     setIsFav]     = useState(false);
+  const [watchDate, setWatchDate] = useState(null);
+
+  useEffect(() => {
+    Promise.all([api.getEntry(id), api.getWatches(id)])
+      .then(([e, w]) => {
+        setEntry(e);
+        setWatches(w ?? []);
+        setRating(e.rating ?? 0);
+        setNotes(e.notes ?? '');
+        setIsFav(e.is_favourite ?? false);
+        if (e.watched_on) setWatchDate(new Date(e.watched_on));
+      })
+      .finally(() => setLoading(false));
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
-
-  const update = async (patch) => {
+  async function save() {
     setSaving(true);
     try {
-      await entriesApi.update(id, patch);
-      await load();
-      notifications.show({ color: 'teal', message: 'Saved' });
-    } catch (err) {
-      notifications.show({ color: 'red', message: err.message });
+      const updated = await api.updateEntry(id, {
+        rating,
+        notes,
+        is_favourite: isFav,
+        watched_on: watchDate ? watchDate.toISOString().slice(0, 10) : null,
+      });
+      setEntry(updated);
+      notifications.show({ message: 'Saved!', color: 'yellow' });
+    } catch (e) {
+      notifications.show({ message: e.message, color: 'red' });
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const addNote = async () => {
-    if (!noteText.trim()) return;
+  async function logRewatch() {
     try {
-      await notesApi.add(id, { content: noteText, is_review: false });
-      setNoteText('');
-      await load();
-    } catch (err) {
-      notifications.show({ color: 'red', message: err.message });
+      const w = await api.addWatch(id, { watched_at: new Date().toISOString().slice(0, 10) });
+      setWatches(prev => [w, ...prev]);
+      notifications.show({ message: 'Rewatch logged!', color: 'yellow' });
+    } catch (e) {
+      notifications.show({ message: e.message, color: 'red' });
     }
-  };
+  }
 
-  const deleteEntry = async () => {
-    try {
-      await entriesApi.delete(id);
-      navigate('/');
-    } catch (err) {
-      notifications.show({ color: 'red', message: err.message });
-    }
-  };
+  async function deleteEntry() {
+    if (!confirm('Remove this movie from your library?')) return;
+    await api.deleteEntry(id);
+    navigate('/');
+  }
 
-  if (loading) return <Center h={400}><Loader color="yellow" /></Center>;
-  if (!entry)  return <Center h={400}><Text c="dimmed">Entry not found.</Text></Center>;
+  if (loading) return <Center py={80}><Loader color="yellow" /></Center>;
+  if (!entry)  return <Text c="red">Entry not found.</Text>;
 
-  const { movie } = entry;
-  const year = movie.release_date ? movie.release_date.slice(0, 4) : '—';
-  const genres = movie.genres || [];
+  const movie  = entry.movie ?? {};
+  const poster = posterUrl(movie.poster_path, 'w500');
 
   return (
-    <>
-      {/* Delete confirmation */}
-      <Modal
-        opened={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        title="Remove from library?"
-        centered
-        styles={{ content: { background: '#1a1a1a' }, header: { background: '#1a1a1a' } }}
-      >
-        <Text size="sm" c="dimmed" mb="lg">
-          This will permanently remove "{movie.title}" from your library.
-        </Text>
-        <Group>
-          <Button variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-          <Button color="red" onClick={deleteEntry}>Delete</Button>
-        </Group>
-      </Modal>
+    <Box>
+      <Group mb="lg" justify="space-between">
+        <Button
+          variant="subtle" color="gray" size="sm"
+          leftSection={<IconArrowLeft size={14} />}
+          onClick={() => navigate(-1)}
+        >
+          Back
+        </Button>
+        <ActionIcon color="red" variant="light" onClick={deleteEntry}>
+          <IconTrash size={16} />
+        </ActionIcon>
+      </Group>
 
-      <Group align="flex-start" gap="xl" wrap="wrap">
-        {/* Poster */}
-        <Box style={{ width: 200, flexShrink: 0 }}>
-          <Image
-            src={movie.poster_path ? `${POSTER_BASE}${movie.poster_path}` : undefined}
-            alt={movie.title}
-            radius="lg"
-            style={{ border: '1px solid #2e2e2e' }}
-            fallbackSrc="https://via.placeholder.com/200x300/242424/696969?text=No+Poster"
-          />
-        </Box>
-
-        {/* Details */}
-        <Stack style={{ flex: 1, minWidth: 260 }} gap="md">
-          <Group justify="space-between" align="flex-start">
-            <Box>
-              <Title order={2} style={{ color: '#C9C9C9' }}>{movie.title}</Title>
-              <Text size="sm" c="dimmed">{year} · {movie.runtime ? `${movie.runtime} min` : '—'}</Text>
+      <Grid gutter="xl">
+        <Grid.Col span={{ base: 12, sm: 4 }}>
+          {poster ? (
+            <Image src={poster} radius="lg" alt={movie.title} />
+          ) : (
+            <Box style={{ height: 360, background: '#242424', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Text c="dimmed">No poster</Text>
             </Box>
-            <Group gap="xs">
-              <Tooltip label={entry.is_favorite ? 'Remove from favourites' : 'Add to favourites'}>
-                <ActionIcon
-                  variant="subtle"
-                  onClick={() => update({ is_favorite: !entry.is_favorite })}
-                  aria-label="Toggle favourite"
-                  color={entry.is_favorite ? 'yellow' : 'gray'}
-                >
-                  {entry.is_favorite ? <IconHeartFilled size={20} /> : <IconHeart size={20} />}
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip label="Remove from library">
-                <ActionIcon variant="subtle" color="red" onClick={() => setDeleteOpen(true)} aria-label="Delete entry">
-                  <IconTrash size={18} />
-                </ActionIcon>
-              </Tooltip>
-            </Group>
-          </Group>
-
-          {/* Genres */}
-          {genres.length > 0 && (
-            <Group gap="xs">
-              {genres.map(g => (
-                <Badge key={g.id || g} size="sm" variant="light" color="gray">{g.name || g}</Badge>
-              ))}
-            </Group>
           )}
+        </Grid.Col>
 
-          {/* TMDb rating */}
-          {movie.vote_average > 0 && (
-            <Text size="sm" c="dimmed">TMDb: ★ {movie.vote_average?.toFixed(1)}</Text>
-          )}
-
-          {/* Overview */}
-          {movie.overview && (
-            <Text size="sm" style={{ maxWidth: '65ch', color: '#b8b8b8', lineHeight: 1.6 }}>
-              {movie.overview}
+        <Grid.Col span={{ base: 12, sm: 8 }}>
+          <Stack gap="xs">
+            <Text fw={800} size="2rem" style={{ color: '#e8e8e8', lineHeight: 1.2 }}>
+              {movie.title}
             </Text>
-          )}
+            <Group gap="xs">
+              {movie.year && <Badge color="yellow" variant="light">{movie.year}</Badge>}
+              {movie.runtime && <Badge color="gray" variant="light">{movie.runtime} min</Badge>}
+              {movie.language && <Badge color="gray" variant="outline">{movie.language.toUpperCase()}</Badge>}
+            </Group>
+            {movie.overview && (
+              <Text c="dimmed" size="sm" mt="xs" style={{ maxWidth: 560 }}>{movie.overview}</Text>
+            )}
+            {movie.director && (
+              <Text size="sm"><Text span c="dimmed">Director: </Text>{movie.director}</Text>
+            )}
+            {movie.tmdb_rating && (
+              <Text size="sm"><Text span c="dimmed">TMDb: </Text>★ {movie.tmdb_rating.toFixed(1)} / 10</Text>
+            )}
+          </Stack>
 
-          <Divider style={{ borderColor: '#2e2e2e' }} />
+          <Divider my="lg" color="#2e2e2e" />
 
-          {/* Your rating */}
-          <Box>
-            <Text size="sm" fw={600} mb={6} style={{ color: '#C9C9C9' }}>Your Rating</Text>
-            <Group gap="md" align="center">
-              <Rating
-                value={(editRating || 0) / 2}
-                fractions={2}
-                size="lg"
-                color="yellow"
-                onChange={v => setEditRating(v * 2)}
+          <Stack gap="md">
+            <Group gap="lg" align="flex-start">
+              <Box>
+                <Text size="sm" c="dimmed" mb={4}>Your rating</Text>
+                <Rating
+                  value={rating / 2}
+                  onChange={v => setRating(v * 2)}
+                  fractions={2}
+                  size="xl"
+                  color="yellow"
+                  count={5}
+                />
+                <Text size="xs" c="dimmed" mt={2}>{rating > 0 ? `${rating} / 10` : 'Not rated'}</Text>
+              </Box>
+              <Box>
+                <Text size="sm" c="dimmed" mb={8}>Favourite</Text>
+                <Switch
+                  checked={isFav}
+                  onChange={e => setIsFav(e.currentTarget.checked)}
+                  color="yellow"
+                  thumbIcon={isFav ? <IconHeartFilled size={10} color="#e2b04a" /> : <IconHeart size={10} />}
+                />
+              </Box>
+            </Group>
+
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>Watch date</Text>
+              <DateInput
+                value={watchDate}
+                onChange={setWatchDate}
+                placeholder="Pick a date"
+                valueFormat="DD MMM YYYY"
+                clearable
+                styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
               />
-              <Text size="sm" c="dimmed" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {editRating != null ? `${editRating.toFixed(1)} / 10` : 'Not rated'}
-              </Text>
+            </Box>
+
+            <Box>
+              <Text size="sm" c="dimmed" mb={4}>Notes / Review</Text>
+              <Textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="What did you think?"
+                minRows={3}
+                autosize
+                styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
+              />
+            </Box>
+
+            <Group>
               <Button
-                size="xs"
+                leftSection={<IconDeviceFloppy size={14} />}
                 color="yellow"
+                onClick={save}
                 loading={saving}
-                disabled={editRating === entry.rating}
-                onClick={() => update({ rating: editRating })}
               >
                 Save
               </Button>
-            </Group>
-          </Box>
-
-          {/* Status */}
-          <Select
-            label="Status"
-            value={entry.status}
-            onChange={v => update({ status: v })}
-            data={[
-              { value: 'watched',    label: '✓ Watched' },
-              { value: 'watchlist',  label: '⏰ Watchlist' },
-              { value: 'rewatching', label: '↺ Rewatching' },
-              { value: 'dropped',    label: '✕ Dropped' },
-            ]}
-            styles={{ input: { background: '#1a1a1a', border: '1px solid #2e2e2e', color: '#C9C9C9' } }}
-          />
-        </Stack>
-      </Group>
-
-      <Divider my="xl" style={{ borderColor: '#2e2e2e' }} />
-
-      {/* Notes */}
-      <Box mb="xl">
-        <Title order={4} mb="md" style={{ color: '#C9C9C9' }}>Notes & Reviews</Title>
-        <Group align="flex-end" gap="sm" mb="md">
-          <Textarea
-            placeholder="Add a note about this film…"
-            value={noteText}
-            onChange={e => setNoteText(e.target.value)}
-            autosize
-            minRows={2}
-            style={{ flex: 1 }}
-            styles={{ input: { background: '#1a1a1a', border: '1px solid #2e2e2e', color: '#C9C9C9' } }}
-          />
-          <Button
-            color="yellow"
-            leftSection={<IconPlus size={14} />}
-            onClick={addNote}
-            disabled={!noteText.trim()}
-          >
-            Add
-          </Button>
-        </Group>
-        <Stack gap="sm">
-          {notes.map(note => (
-            <Paper
-              key={note.id}
-              p="sm"
-              radius="md"
-              style={{ background: '#1a1a1a', border: '1px solid #2e2e2e' }}
-            >
-              <Group justify="space-between" align="flex-start">
-                <Text size="sm" style={{ color: '#b8b8b8', flex: 1 }}>{note.content}</Text>
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  size="sm"
-                  onClick={async () => {
-                    await notesApi.delete(id, note.id);
-                    await load();
-                  }}
-                  aria-label="Delete note"
-                >
-                  <IconTrash size={12} />
-                </ActionIcon>
-              </Group>
-              <Text size="xs" c="dimmed" mt={4}>
-                {new Date(note.created_at).toLocaleDateString()}
-              </Text>
-            </Paper>
-          ))}
-          {notes.length === 0 && (
-            <Text size="sm" c="dimmed">No notes yet.</Text>
-          )}
-        </Stack>
-      </Box>
-
-      {/* Watch history */}
-      <Box>
-        <Title order={4} mb="md" style={{ color: '#C9C9C9' }}>Watch History</Title>
-        <Stack gap="xs">
-          {watches.map(w => (
-            <Group key={w.id} justify="space-between">
-              <Group gap="sm">
-                <IconCalendar size={14} color="#696969" />
-                <Text size="sm" c="dimmed">{new Date(w.watched_on).toLocaleDateString()}</Text>
-                {w.platform && (
-                  <Badge size="xs" variant="outline" color="gray">
-                    <IconDeviceTv size={10} style={{ marginRight: 3 }} />
-                    {w.platform}
-                  </Badge>
-                )}
-              </Group>
-              <ActionIcon
-                variant="subtle" color="red" size="sm"
-                onClick={async () => { await watchApi.delete(id, w.id); await load(); }}
-                aria-label="Remove watch event"
+              <Button
+                leftSection={<IconCalendarPlus size={14} />}
+                variant="light"
+                color="gray"
+                onClick={logRewatch}
               >
-                <IconTrash size={12} />
-              </ActionIcon>
+                Log rewatch
+              </Button>
             </Group>
-          ))}
-          {watches.length === 0 && <Text size="sm" c="dimmed">No watch events logged.</Text>}
-        </Stack>
-        <Button
-          size="xs"
-          mt="md"
-          variant="light"
-          leftSection={<IconPlus size={12} />}
-          onClick={async () => {
-            await watchApi.add(id, { watched_on: new Date().toISOString().slice(0, 10) });
-            await load();
-          }}
-        >
-          Log watch today
-        </Button>
-      </Box>
-    </>
+          </Stack>
+        </Grid.Col>
+      </Grid>
+
+      {watches.length > 0 && (
+        <Box mt="xl">
+          <Text fw={600} mb="sm" style={{ color: '#e8e8e8' }}>
+            <IconEye size={14} style={{ marginRight: 6 }} />Watch history
+          </Text>
+          <Stack gap={6}>
+            {watches.map((w, i) => (
+              <Group key={w.id ?? i} gap="sm">
+                <Badge color="gray" variant="outline" size="sm">{w.watched_at ?? w.watched_on}</Badge>
+                {w.note && <Text size="xs" c="dimmed">{w.note}</Text>}
+              </Group>
+            ))}
+          </Stack>
+        </Box>
+      )}
+    </Box>
   );
 }

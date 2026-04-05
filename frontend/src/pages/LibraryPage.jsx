@@ -1,78 +1,94 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Title, Text, SimpleGrid, Loader, Center, Stack,
-  Group, Badge, ActionIcon, Tooltip,
+  Grid, TextInput, Select, Group, Text, Loader, Center,
+  MultiSelect, SegmentedControl, Box,
 } from '@mantine/core';
-import { IconMovie, IconRefresh } from '@tabler/icons-react';
-import { entriesApi } from '../api/client';
-import MovieCard from '../components/MovieCard';
-import FilterBar from '../components/FilterBar';
-
-const DEFAULT_FILTERS = {
-  query: '', genre: '', sortBy: 'added_at', sortDir: 'desc', status: 'watched',
-};
+import { IconSearch, IconMovie } from '@tabler/icons-react';
+import { api } from '../api/client';
+import PosterCard from '../components/PosterCard';
+import EmptyState from '../components/EmptyState';
 
 export default function LibraryPage() {
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [entries, setEntries]   = useState([]);
+  const [genres,  setGenres]    = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [search,  setSearch]    = useState('');
+  const [genre,   setGenre]     = useState(null);
+  const [sort,    setSort]      = useState('watched_on');
+  const [fav,     setFav]       = useState('all');
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    api.getGenres().then(g => setGenres(g.map(x => ({ value: String(x.id), label: x.name }))));
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
-    try {
-      const params = {
-        q:        filters.query   || undefined,
-        genre:    filters.genre   || undefined,
-        sort_by:  filters.sortBy,
-        sort_dir: filters.sortDir,
-        status:   filters.status !== 'all' ? filters.status : undefined,
-      };
-      const data = await entriesApi.list(params);
-      setEntries(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+    const params = { sort_by: sort, direction: 'desc', limit: 100 };
+    if (genre)                params.genre_id   = genre;
+    if (fav === 'fav')        params.favourites  = true;
+    api.getEntries(params)
+      .then(data => setEntries(Array.isArray(data) ? data : data.items ?? []))
+      .finally(() => setLoading(false));
+  }, [genre, sort, fav]);
 
-  useEffect(() => { load(); }, [load]);
+  const filtered = entries.filter(e =>
+    !search || (e.movie?.title ?? '').toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <>
-      <Group justify="space-between" mb="md">
-        <Stack gap={0}>
-          <Title order={2} style={{ color: '#C9C9C9' }}>My Library</Title>
-          <Text size="sm" c="dimmed">{entries.length} film{entries.length !== 1 ? 's' : ''}</Text>
-        </Stack>
-        <Tooltip label="Refresh">
-          <ActionIcon variant="subtle" onClick={load} aria-label="Refresh library">
-            <IconRefresh size={16} />
-          </ActionIcon>
-        </Tooltip>
+    <Box>
+      <Group mb="md" gap="sm" wrap="wrap">
+        <TextInput
+          placeholder="Filter library…"
+          leftSection={<IconSearch size={14} />}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: 180 }}
+          styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
+        />
+        <Select
+          placeholder="Genre"
+          data={[{ value: '', label: 'All genres' }, ...genres]}
+          value={genre ?? ''}
+          onChange={v => setGenre(v || null)}
+          clearable
+          styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
+        />
+        <Select
+          data={[
+            { value: 'watched_on', label: 'Watch date' },
+            { value: 'rating',     label: 'Rating' },
+            { value: 'created_at', label: 'Date added' },
+          ]}
+          value={sort}
+          onChange={setSort}
+          styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
+        />
+        <SegmentedControl
+          value={fav}
+          onChange={setFav}
+          data={[{ value: 'all', label: 'All' }, { value: 'fav', label: '★ Favs' }]}
+          styles={{ root: { background: '#242424' }, label: { color: '#b8b8b8' } }}
+        />
       </Group>
 
-      <FilterBar filters={filters} onChange={setFilters} />
-
       {loading ? (
-        <Center h={300}><Loader color="yellow" /></Center>
-      ) : entries.length === 0 ? (
-        <Center h={300}>
-          <Stack align="center" gap="sm">
-            <IconMovie size={48} color="#424242" />
-            <Text c="dimmed">No movies yet. Add your first film!</Text>
-          </Stack>
-        </Center>
+        <Center py={80}><Loader color="yellow" /></Center>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={IconMovie}
+          title="Your library is empty"
+          description="Search for a movie and add it to start building your collection."
+        />
       ) : (
-        <SimpleGrid
-          cols={{ base: 2, xs: 3, sm: 4, md: 5, lg: 6, xl: 7 }}
-          spacing="md"
-        >
-          {entries.map(e => (
-            <MovieCard key={e.id} entry={e} onUpdate={load} />
+        <Grid gutter="md">
+          {filtered.map(e => (
+            <Grid.Col key={e.id} span={{ base: 6, xs: 4, sm: 3, md: 2 }}>
+              <PosterCard entry={e} />
+            </Grid.Col>
           ))}
-        </SimpleGrid>
+        </Grid>
       )}
-    </>
+    </Box>
   );
 }

@@ -1,146 +1,119 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import {
-  Title, TextInput, Loader, Center, Stack, Text, Card,
-  Image, Group, Button, Badge, Box, ActionIcon,
+  TextInput, Button, Grid, Card, Image, Text, Box,
+  Group, Loader, Center, Badge, Stack, Alert,
 } from '@mantine/core';
-import { useDebouncedValue } from '@mantine/hooks';
+import { IconSearch, IconPlus, IconCheck, IconAlertCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-import { IconSearch, IconPlus, IconCheck } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { moviesApi, entriesApi } from '../api/client';
-import { useEffect } from 'react';
-
-const POSTER_BASE = 'https://image.tmdb.org/t/p/w185';
+import { api, posterUrl } from '../api/client';
 
 export default function AddMoviePage() {
-  const [query, setQuery] = useState('');
-  const [debounced] = useDebouncedValue(query, 400);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [adding, setAdding] = useState(null);
+  const [query,    setQuery]    = useState('');
+  const [results,  setResults]  = useState([]);
+  const [loading,  setLoading]  = useState(false);
+  const [importing, setImporting] = useState(null);
+  const [error,    setError]    = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!debounced.trim()) { setResults([]); return; }
-    setLoading(true);
-    moviesApi.search(debounced)
-      .then(data => setResults(Array.isArray(data) ? data : data.results || []))
-      .catch(err => notifications.show({ color: 'red', message: err.message }))
-      .finally(() => setLoading(false));
-  }, [debounced]);
-
-  const handleAdd = async (tmdbMovie, asWatchlist = false) => {
-    setAdding(tmdbMovie.id);
+  async function search() {
+    if (!query.trim()) return;
+    setLoading(true); setError('');
     try {
-      // 1. Import / cache the movie
-      await moviesApi.import(tmdbMovie.id);
-      // 2. Create entry
-      const entry = await entriesApi.create({
-        tmdb_id: tmdbMovie.id,
-        status: asWatchlist ? 'watchlist' : 'watched',
-      });
+      const data = await api.searchTmdb(query);
+      setResults(data.results ?? []);
+      if ((data.results ?? []).length === 0) setError('No results found.');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function importMovie(tmdbId) {
+    setImporting(tmdbId);
+    try {
+      const movie = await api.importTmdb(tmdbId);
+      const entry = await api.createEntry({ movie_id: movie.id });
       notifications.show({
+        title: 'Added!',
+        message: `${movie.title} added to your library.`,
         color: 'yellow',
         icon: <IconCheck size={16} />,
-        message: `"${tmdbMovie.title}" added to your ${asWatchlist ? 'watchlist' : 'library'}!`,
       });
-      if (!asWatchlist) navigate(`/movie/${entry.id}`);
-    } catch (err) {
-      notifications.show({ color: 'red', message: err.message });
+      navigate(`/movie/${entry.id}`);
+    } catch (e) {
+      notifications.show({
+        title: 'Error',
+        message: e.message,
+        color: 'red',
+        icon: <IconAlertCircle size={16} />,
+      });
     } finally {
-      setAdding(null);
+      setImporting(null);
     }
-  };
-
-  const year = (d) => d ? d.slice(0, 4) : '?';
+  }
 
   return (
-    <>
-      <Title order={2} mb="lg" style={{ color: '#C9C9C9' }}>Add a Movie</Title>
+    <Box maw={860} mx="auto">
+      <Text fw={700} size="xl" mb="md" style={{ color: '#e2b04a' }}>Add a Movie</Text>
 
-      <TextInput
-        placeholder="Search TMDb — type a title…"
-        leftSection={<IconSearch size={16} />}
-        rightSection={loading ? <Loader size={14} color="yellow" /> : null}
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        size="md"
-        mb="lg"
-        autoFocus
-        styles={{ input: { background: '#1a1a1a', border: '1px solid #424242', color: '#C9C9C9', fontSize: 15 } }}
-      />
+      <Group mb="lg" gap="sm">
+        <TextInput
+          placeholder="Search TMDb — e.g. Blade Runner"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()}
+          style={{ flex: 1 }}
+          styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
+          leftSection={<IconSearch size={14} />}
+        />
+        <Button onClick={search} loading={loading} color="yellow" variant="filled">
+          Search
+        </Button>
+      </Group>
 
-      {results.length === 0 && !loading && debounced && (
-        <Center h={200}>
-          <Text c="dimmed">No results for "{debounced}"</Text>
-        </Center>
-      )}
+      {error && <Alert color="red" mb="md" icon={<IconAlertCircle />}>{error}</Alert>}
 
-      <Stack gap="sm">
-        {results.map(movie => (
-          <Card
-            key={movie.id}
-            padding="sm"
-            radius="lg"
-            style={{ background: '#1a1a1a', border: '1px solid #2e2e2e' }}
-          >
-            <Group gap="md" wrap="nowrap">
-              {/* Poster thumbnail */}
-              <Box style={{ flexShrink: 0, width: 52, height: 78, borderRadius: 6, overflow: 'hidden', background: '#242424' }}>
-                {movie.poster_path ? (
-                  <Image
-                    src={`${POSTER_BASE}${movie.poster_path}`}
-                    alt={movie.title}
-                    w={52} h={78}
-                    style={{ objectFit: 'cover' }}
-                  />
-                ) : null}
-              </Box>
-
-              {/* Info */}
-              <Box style={{ flex: 1, minWidth: 0 }}>
-                <Text fw={600} size="sm" lineClamp={1} style={{ color: '#C9C9C9' }}>
-                  {movie.title}
-                </Text>
-                <Group gap="xs" mt={2}>
-                  <Text size="xs" c="dimmed">{year(movie.release_date)}</Text>
-                  {movie.vote_average > 0 && (
-                    <Badge size="xs" color="yellow" variant="light">
-                      ★ {movie.vote_average.toFixed(1)}
-                    </Badge>
+      {loading ? (
+        <Center py={60}><Loader color="yellow" /></Center>
+      ) : (
+        <Grid gutter="md">
+          {results.map(r => (
+            <Grid.Col key={r.id} span={{ base: 6, sm: 4, md: 3 }}>
+              <Card
+                shadow="sm" radius="lg"
+                style={{ background: '#1a1a1a', border: '1px solid #2e2e2e' }}
+              >
+                <Card.Section>
+                  {posterUrl(r.poster_path) ? (
+                    <Image src={posterUrl(r.poster_path)} height={220} fit="cover" />
+                  ) : (
+                    <Box style={{ height: 220, background: '#242424', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text c="dimmed" size="xs">No poster</Text>
+                    </Box>
                   )}
-                </Group>
-                {movie.overview && (
-                  <Text size="xs" c="dimmed" lineClamp={2} mt={4}>
-                    {movie.overview}
-                  </Text>
-                )}
-              </Box>
-
-              {/* Actions */}
-              <Group gap="xs" style={{ flexShrink: 0 }}>
-                <Button
-                  size="xs"
-                  color="yellow"
-                  leftSection={<IconPlus size={14} />}
-                  loading={adding === movie.id}
-                  onClick={() => handleAdd(movie, false)}
-                >
-                  Add
-                </Button>
-                <Button
-                  size="xs"
-                  variant="light"
-                  loading={adding === movie.id}
-                  onClick={() => handleAdd(movie, true)}
-                >
-                  Watchlist
-                </Button>
-              </Group>
-            </Group>
-          </Card>
-        ))}
-      </Stack>
-    </>
+                </Card.Section>
+                <Stack gap={4} p="xs" pt="sm">
+                  <Text fw={600} size="sm" lineClamp={2} style={{ color: '#e8e8e8' }}>{r.title}</Text>
+                  <Text size="xs" c="dimmed">{r.release_date?.slice(0, 4) ?? '—'}</Text>
+                  <Button
+                    size="xs"
+                    color="yellow"
+                    variant="light"
+                    leftSection={<IconPlus size={12} />}
+                    loading={importing === r.id}
+                    onClick={() => importMovie(r.id)}
+                    mt={4}
+                  >
+                    Add
+                  </Button>
+                </Stack>
+              </Card>
+            </Grid.Col>
+          ))}
+        </Grid>
+      )}
+    </Box>
   );
 }
