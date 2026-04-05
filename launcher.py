@@ -32,57 +32,60 @@ server_thread = None
 
 # ─────────────────────────────────────────────────────────────────────────────
 class RoundedButton(tk.Canvas):
-    """Canvas-based button with rounded corners.
+    """
+    Canvas-based rounded button.
 
-    IMPORTANT: width and height must be passed as explicit keyword args here
-    and forwarded directly to Canvas — never via **kw — to avoid the Tkinter
-    bug where integer values get treated as widget IDs.
+    Width/height are stored as instance attributes and applied via
+    self.config() AFTER super().__init__() completes, avoiding the
+    Python 3.13 Tkinter bug where integer constructor args get
+    registered as widget command names.
     """
 
     def __init__(self, parent, text, command,
                  bg=ACCENT, fg=BG, btn_width=180, btn_height=42, radius=8):
-        # Call Canvas.__init__ with explicit width/height — no **kw passthrough
+        # 1. Create the Canvas with NO width/height — just colours and borders
         super().__init__(
             parent,
-            width=btn_width,
-            height=btn_height,
             bg=SURFACE,
             highlightthickness=0,
             bd=0,
         )
-        self._bg      = bg
-        self._fg      = fg
-        self._cmd     = command
-        self._text    = text
-        self._r       = radius
-        self._w       = btn_width
-        self._h       = btn_height
+        # 2. Store dimensions as plain Python attributes
+        self._bw     = btn_width
+        self._bh     = btn_height
+        self._bg     = bg
+        self._fg     = fg
+        self._cmd    = command
+        self._text   = text
+        self._r      = radius
 
+        # 3. Apply size AFTER the widget exists in Tk
+        self.config(width=self._bw, height=self._bh)
+
+        # 4. Draw and bind
         self._draw(bg)
         self.bind("<Enter>",           self._on_enter)
         self.bind("<Leave>",           self._on_leave)
         self.bind("<Button-1>",        self._on_click)
         self.bind("<ButtonRelease-1>", self._on_release)
 
-    # ── drawing ───────────────────────────────────────────────────────────────
     def _round_rect(self, x1, y1, x2, y2, r, **kw):
         self.create_arc(x1,      y1,      x1+2*r, y1+2*r, start=90,  extent=90, style="pieslice", **kw)
         self.create_arc(x2-2*r,  y1,      x2,     y1+2*r, start=0,   extent=90, style="pieslice", **kw)
         self.create_arc(x1,      y2-2*r,  x1+2*r, y2,     start=180, extent=90, style="pieslice", **kw)
         self.create_arc(x2-2*r,  y2-2*r,  x2,     y2,     start=270, extent=90, style="pieslice", **kw)
-        self.create_rectangle(x1+r, y1,   x2-r, y2, **kw)
+        self.create_rectangle(x1+r, y1,   x2-r, y2,   **kw)
         self.create_rectangle(x1,   y1+r, x2,   y2-r, **kw)
 
     def _draw(self, color):
         self.delete("all")
-        self._round_rect(1, 1, self._w - 1, self._h - 1, self._r,
+        self._round_rect(1, 1, self._bw - 1, self._bh - 1, self._r,
                          fill=color, outline="")
-        self.create_text(self._w // 2, self._h // 2,
+        self.create_text(self._bw // 2, self._bh // 2,
                          text=self._text,
                          fill=self._fg,
                          font=("Segoe UI Semibold", 10))
 
-    # ── interactions ─────────────────────────────────────────────────────────
     def _on_enter(self, e):   self._draw(self._darken(self._bg, 20))
     def _on_leave(self, e):   self._draw(self._bg)
     def _on_click(self, e):   self._draw(self._darken(self._bg, 40))
@@ -98,20 +101,20 @@ class RoundedButton(tk.Canvas):
         return f"#{max(0,r-amount):02x}{max(0,g-amount):02x}{max(0,b-amount):02x}"
 
     def configure_color(self, bg=None, fg=None, text=None):
-        if bg:   self._bg   = bg
-        if fg:   self._fg   = fg
-        if text: self._text = text
+        if bg   is not None: self._bg   = bg
+        if fg   is not None: self._fg   = fg
+        if text is not None: self._text = text
         self._draw(self._bg)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 class StatusDot(tk.Canvas):
     def __init__(self, parent, **kw):
-        super().__init__(parent, width=12, height=12,
-                         bg=SURFACE, highlightthickness=0, **kw)
-        self._state  = "idle"
+        super().__init__(parent, bg=SURFACE, highlightthickness=0, **kw)
+        self.config(width=12, height=12)
+        self._state   = "idle"
         self._anim_id = None
-        self._phase  = 0
+        self._phase   = 0
         self.set("idle")
 
     def set(self, state):
@@ -148,7 +151,6 @@ class App(tk.Tk):
         self.title("CinemaList Launcher")
         self.configure(bg=BG)
         self.resizable(False, False)
-        self.geometry("520x590")
         self._center()
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -160,15 +162,14 @@ class App(tk.Tk):
         w, h = 520, 590
         self.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
 
-    # ── build ─────────────────────────────────────────────────────────────────
     def _build_ui(self):
         # ── header ────────────────────────────────────────────────────────────
         header = tk.Frame(self, bg=SURFACE, height=64)
         header.pack(fill="x")
         header.pack_propagate(False)
 
-        logo = tk.Canvas(header, width=36, height=36,
-                         bg=SURFACE, highlightthickness=0)
+        logo = tk.Canvas(header, bg=SURFACE, highlightthickness=0)
+        logo.config(width=36, height=36)
         logo.place(x=16, y=14)
         logo.create_oval(2, 2, 34, 34, outline=ACCENT, width=2)
         logo.create_oval(14, 14, 22, 22, fill=ACCENT, outline="")
@@ -180,10 +181,10 @@ class App(tk.Tk):
         tk.Label(header, text="Backend Launcher",
                  font=("Segoe UI", 9), fg=TEXT_MUTED, bg=SURFACE).place(x=61, y=35)
 
-        # ── divider ───────────────────────────────────────────────────────────
+        # ── divider
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
 
-        # ── status card ───────────────────────────────────────────────────────
+        # ── status card
         status_frame = tk.Frame(self, bg=SURFACE2, pady=16)
         status_frame.pack(fill="x", padx=16, pady=(14, 0))
 
@@ -205,7 +206,7 @@ class App(tk.Tk):
         self.url_label.bind("<Button-1>",
                             lambda e: webbrowser.open("http://localhost:8000/docs"))
 
-        # ── primary buttons row ───────────────────────────────────────────────
+        # ── primary buttons
         btn_frame = tk.Frame(self, bg=BG)
         btn_frame.pack(pady=16)
 
@@ -223,7 +224,7 @@ class App(tk.Tk):
         )
         self.stop_btn.pack(side="left", padx=6)
 
-        # ── secondary buttons row ─────────────────────────────────────────────
+        # ── secondary buttons
         btn_frame2 = tk.Frame(self, bg=BG)
         btn_frame2.pack()
 
@@ -239,7 +240,7 @@ class App(tk.Tk):
             bg=SURFACE2, fg=TEXT, btn_width=200, btn_height=40,
         ).pack(side="left", padx=6)
 
-        # ── log header ────────────────────────────────────────────────────────
+        # ── log header
         log_header = tk.Frame(self, bg=BG)
         log_header.pack(fill="x", padx=16, pady=(14, 4))
         tk.Label(log_header, text="SERVER LOG",
@@ -249,7 +250,7 @@ class App(tk.Tk):
         clear_lbl.pack(side="right")
         clear_lbl.bind("<Button-1>", lambda e: self._clear_log())
 
-        # ── log box ───────────────────────────────────────────────────────────
+        # ── log box
         log_outer = tk.Frame(self, bg=SURFACE, bd=0,
                              highlightthickness=1, highlightbackground=BORDER)
         log_outer.pack(fill="both", expand=True, padx=16, pady=(0, 16))
