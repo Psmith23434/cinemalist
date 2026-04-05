@@ -161,27 +161,44 @@ class App(tk.Tk):
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
     def _build_ui(self):
-        # header
-        header = tk.Frame(self, bg=SURFACE, height=64)
+        # ── header: taller so both lines breathe ──────────────────────────────
+        HEADER_H = 76  # was 64, now tall enough for 15pt + 9pt + margins
+        header = tk.Frame(self, bg=SURFACE, height=HEADER_H)
         header.pack(fill="x")
         header.pack_propagate(False)
 
+        # film-reel logo – centred vertically in the taller header
+        logo_y = (HEADER_H - 36) // 2        # = 20 when HEADER_H=76
         logo = tk.Canvas(header, bg=SURFACE, highlightthickness=0)
         logo.config(width=36, height=36)
-        logo.place(x=16, y=14)
+        logo.place(x=16, y=logo_y)
         logo.create_oval(2, 2, 34, 34, outline=ACCENT, width=2)
         logo.create_oval(14, 14, 22, 22, fill=ACCENT, outline="")
         for dx, dy in [(16,4),(26,10),(26,22),(16,28),(6,22),(6,10)]:
             logo.create_oval(dx-3, dy-3, dx+3, dy+3, fill=ACCENT, outline="")
 
-        tk.Label(header, text="CinemaList",
-                 font=("Segoe UI Semibold", 15), fg=TEXT, bg=SURFACE).place(x=60, y=13)
-        tk.Label(header, text="Backend Launcher",
-                 font=("Segoe UI", 9), fg=TEXT_MUTED, bg=SURFACE).place(x=61, y=35)
+        # text block: two labels stacked, together centred in the header
+        # total text block height ≈ 22 (title) + 4 (gap) + 14 (subtitle) = 40px
+        text_block_top = (HEADER_H - 40) // 2   # = 18 when HEADER_H=76
+        TEXT_X = 62
+
+        tk.Label(
+            header,
+            text="CinemaList",
+            font=("Segoe UI Semibold", 15),
+            fg=TEXT, bg=SURFACE,
+        ).place(x=TEXT_X, y=text_block_top)
+
+        tk.Label(
+            header,
+            text="Backend Launcher",
+            font=("Segoe UI", 9),
+            fg=TEXT_MUTED, bg=SURFACE,
+        ).place(x=TEXT_X, y=text_block_top + 26)   # 26px below title baseline
 
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
 
-        # status card
+        # ── status card ──────────────────────────────────────────────────
         status_frame = tk.Frame(self, bg=SURFACE2, pady=16)
         status_frame.pack(fill="x", padx=16, pady=(14, 0))
         row = tk.Frame(status_frame, bg=SURFACE2)
@@ -202,7 +219,7 @@ class App(tk.Tk):
         self.url_label.bind("<Button-1>",
                             lambda e: webbrowser.open("http://localhost:8000/docs"))
 
-        # primary buttons
+        # ── primary buttons ───────────────────────────────────────────────
         btn_frame = tk.Frame(self, bg=BG)
         btn_frame.pack(pady=16)
 
@@ -220,7 +237,7 @@ class App(tk.Tk):
         )
         self.stop_btn.pack(side="left", padx=6)
 
-        # secondary buttons
+        # ── secondary buttons ──────────────────────────────────────────────
         btn_frame2 = tk.Frame(self, bg=BG)
         btn_frame2.pack()
 
@@ -236,7 +253,7 @@ class App(tk.Tk):
             bg=SURFACE2, fg=TEXT, btn_width=200, btn_height=40,
         ).pack(side="left", padx=6)
 
-        # log header
+        # ── log header ─────────────────────────────────────────────────────
         log_header = tk.Frame(self, bg=BG)
         log_header.pack(fill="x", padx=16, pady=(14, 4))
         tk.Label(log_header, text="SERVER LOG",
@@ -246,7 +263,7 @@ class App(tk.Tk):
         clear_lbl.pack(side="right")
         clear_lbl.bind("<Button-1>", lambda e: self._clear_log())
 
-        # log box
+        # ── log box ──────────────────────────────────────────────────────────
         log_outer = tk.Frame(self, bg=SURFACE, bd=0,
                              highlightthickness=1, highlightbackground=BORDER)
         log_outer.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -332,7 +349,6 @@ class App(tk.Tk):
                 )
                 self._log(line, tag)
 
-            # stdout closed — process is truly gone
             server_proc = None
             self._reset_to_idle()
 
@@ -348,10 +364,9 @@ class App(tk.Tk):
         self._set_status("stopping", "Stopping\u2026", "")
         self.stop_btn.configure_color(bg=TEXT_FAINT, fg=TEXT_FAINT, text="\u25a0  Stop Server")
 
-        proc = server_proc  # capture ref before it's cleared
+        proc = server_proc
         def do_kill():
             _kill_proc_tree(proc)
-            # Reset UI on the main thread after kill completes
             self.after(0, self._reset_to_idle)
             self.after(0, lambda: self._log("Server stopped.", "warn"))
 
