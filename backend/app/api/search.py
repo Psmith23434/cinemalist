@@ -1,53 +1,55 @@
-"""Search endpoints — TMDb movie search with local caching."""
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+"""
+GET  /api/v1/search?q=<query>&page=<n>   — search TMDb
+GET  /api/v1/movies/popular              — popular movies
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, Query, HTTPException
+from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.services.tmdb import tmdb
-from app.schemas.tmdb import TMDbSearchResponse, TMDbMovieDetail, TMDbMovieResult
+from app.services import tmdb
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1", tags=["search"])
 
 
-@router.get("/tmdb", response_model=TMDbSearchResponse, summary="Search TMDb for movies")
-async def search_tmdb(
+@router.get("/search")
+def search(
     q: str = Query(..., min_length=1, description="Movie title to search for"),
-    page: int = Query(1, ge=1, description="Result page (TMDb paginates at 20/page)"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Search TMDb by title. Results are cached locally for 7 days.
-
-    Each result includes a ready-to-use ``poster_url`` (w500) so the UI
-    can render posters without any additional URL construction.
+    page: int = Query(1, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> Any:
     """
-    data = await tmdb.search_movies(query=q, page=page, db=db)
-
-    results = [
-        TMDbMovieResult.from_tmdb(item)
-        for item in data.get("results", [])
-    ]
-
-    return TMDbSearchResponse(
-        page=data.get("page", 1),
-        total_results=data.get("total_results", 0),
-        total_pages=data.get("total_pages", 1),
-        results=results,
-    )
+    Search TMDb for movies matching the query string.
+    Results are cached locally for 1 hour.
+    """
+    if not q.strip():
+        raise HTTPException(status_code=400, detail="Query must not be empty")
+    return tmdb.search_movies(db, q.strip(), page=page)
 
 
-@router.get(
-    "/tmdb/{tmdb_id}",
-    response_model=TMDbMovieDetail,
-    summary="Get full TMDb movie detail",
-)
-async def get_tmdb_movie(
+@router.get("/movies/popular")
+def popular(
+    page: int = Query(1, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return the current TMDb popular movies list (cached 6 hours)."""
+    return tmdb.get_popular_movies(db, page=page)
+
+
+@router.get("/movies/{tmdb_id}/detail")
+def movie_detail(
     tmdb_id: int,
-    db: AsyncSession = Depends(get_db),
-):
-    """Fetch full movie metadata from TMDb including cast, crew and genres.
-
-    Also cached locally. Call this before importing a movie to preview
-    what will be stored.
+    db: Session = Depends(get_db),
+) -> Any:
     """
-    data = await tmdb.get_movie_detail(tmdb_id=tmdb_id, db=db)
-    return TMDbMovieDetail.from_tmdb(data)
+    Fetch full TMDb detail for a single movie.
+    Includes cast, trailer links, keywords, release dates.
+    Cached locally for 30 days.
+    """
+    try:
+        return tmdb.get_movie_detail(db, tmdb_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"TMDb request failed: {exc}") from exc

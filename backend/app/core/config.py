@@ -1,34 +1,31 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./cinemalist.db"
-
     # TMDb
     TMDB_API_KEY: str = ""
     TMDB_BASE_URL: str = "https://api.themoviedb.org/3"
-    TMDB_IMAGE_BASE: str = "https://image.tmdb.org/t/p"
+    TMDB_IMAGE_BASE: str = "https://image.tmdb.org/t/p/w500"
+
+    # Database
+    DATABASE_URL: str = "sqlite:///./cinemalist.db"
+
+    # Media / file storage
+    MEDIA_DIR: str = "./media"
 
     # App
-    SECRET_KEY: str = "dev-secret-change-me"
+    SECRET_KEY: str = "change-me-in-production"
     DEBUG: bool = True
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
 
-    # LLM (Phase 5)
+    # LLM proxy (Phase 5 — optional for now)
+    LLM_PROXY_URL: str = ""
     LLM_API_KEY: str = ""
     LLM_MODEL: str = "gpt-4o-mini"
-    LLM_PROXY_URL: str = "https://api.openai.com/v1"
 
-    # Media
-    MEDIA_DIR: str = "./media"
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()

@@ -1,158 +1,131 @@
-"""Movie endpoints — local DB movies + TMDb import."""
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import Optional
-import json
+"""
+POST /api/v1/movies/import/{tmdb_id}  — import a movie from TMDb into the local DB
+GET  /api/v1/movies                   — list all locally-stored movies
+GET  /api/v1/movies/{id}              — get one locally-stored movie
+DELETE /api/v1/movies/{id}            — remove a movie from the local cache
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.movie import Movie
-from app.models.genre import Genre
-from app.models.movie_genre import MovieGenre
-from app.schemas.movie import MovieCreate, MovieOut
-from app.services.tmdb import tmdb
+from app.services import tmdb as tmdb_service
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1/movies", tags=["movies"])
 
 
 # ---------------------------------------------------------------------------
-# List / Get
+# Helper: get-or-create a Movie row from TMDb data
 # ---------------------------------------------------------------------------
+def _upsert_movie(db: Session, tmdb_id: int) -> Any:
+    """Fetch TMDb detail and upsert into the local `movies` table."""
+    # Lazy import to avoid circular deps at module load time
+    from app.models.movie import Movie  # type: ignore
 
-@router.get("/", response_model=list[MovieOut], summary="List local movies")
-async def list_movies(
-    q: Optional[str] = Query(None, description="Filter by title (partial match)"),
-    year: Optional[int] = Query(None, description="Filter by release year"),
-    genre: Optional[str] = Query(None, description="Filter by genre name"),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, le=200),
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = select(Movie)
-    if q:
-        stmt = stmt.where(Movie.title.ilike(f"%{q}%"))
-    if year:
-        stmt = stmt.where(Movie.year == year)
-    stmt = stmt.offset(skip).limit(limit)
-    result = await db.execute(stmt)
-    return result.scalars().all()
+    detail = tmdb_service.get_movie_detail(db, tmdb_id)
+    movie_dict = tmdb_service.tmdb_detail_to_movie_dict(detail)
 
+    movie = db.query(Movie).filter(Movie.tmdb_id == tmdb_id).first()
+    if movie:
+        # Refresh cached data
+        for key, value in movie_dict.items():
+            setattr(movie, key, value)
+    else:
+        movie = Movie(**movie_dict)
+        db.add(movie)
 
-@router.get("/{movie_id}", response_model=MovieOut, summary="Get a local movie by ID")
-async def get_movie(movie_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Movie).where(Movie.id == movie_id))
-    movie = result.scalar_one_or_none()
-    if not movie:
-        raise HTTPException(status_code=404, detail="Movie not found")
-    return movie
+    db.commit()
+    db.refresh(movie)
+    return movie, detail
 
 
 # ---------------------------------------------------------------------------
-# Manual create
+# Routes
 # ---------------------------------------------------------------------------
-
-@router.post("/", response_model=MovieOut, status_code=201, summary="Create movie manually")
-async def create_movie(data: MovieCreate, db: AsyncSession = Depends(get_db)):
-    if data.tmdb_id:
-        existing = await db.execute(select(Movie).where(Movie.tmdb_id == data.tmdb_id))
-        if existing.scalar_one_or_none():
-            raise HTTPException(status_code=409, detail="Movie with this TMDb ID already exists")
-    movie = Movie(**data.model_dump())
-    db.add(movie)
-    await db.flush()
-    return movie
-
-
-# ---------------------------------------------------------------------------
-# TMDb import  <-- KEY Phase 3 endpoint
-# ---------------------------------------------------------------------------
-
-@router.post(
-    "/import/{tmdb_id}",
-    response_model=MovieOut,
-    status_code=201,
-    summary="Import a movie from TMDb into the local DB",
-)
-async def import_from_tmdb(
+@router.post("/import/{tmdb_id}", status_code=201)
+def import_movie(
     tmdb_id: int,
-    db: AsyncSession = Depends(get_db),
-):
-    """Fetch full metadata from TMDb and save it as a local Movie row.
-
-    - If the movie already exists locally (same ``tmdb_id``) the existing
-      record is returned with HTTP 200 instead of 201 — safe to call
-      multiple times.
-    - Genres are upserted into the ``genres`` table and linked via
-      ``movie_genres``.
-    - ``director`` and ``cast_top5`` (JSON array) are denormalised onto
-      the Movie row for fast reads.
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> Any:
     """
-    # --- Idempotency: return existing if already imported ---
-    existing_result = await db.execute(select(Movie).where(Movie.tmdb_id == tmdb_id))
-    existing = existing_result.scalar_one_or_none()
-    if existing:
-        return existing
+    Import (or refresh) a movie from TMDb into the local database.
+    The poster image is downloaded in the background so the response is immediate.
+    """
+    try:
+        movie, detail = _upsert_movie(db, tmdb_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"TMDb import failed: {exc}") from exc
 
-    # --- Fetch from TMDb (uses cache) ---
-    data = await tmdb.get_movie_detail(tmdb_id=tmdb_id, db=db)
+    # Download poster in the background — don't block the response
+    poster_path = detail.get("poster_path")
+    if poster_path:
+        background_tasks.add_task(tmdb_service.download_poster, tmdb_id, poster_path)
 
-    release = data.get("release_date") or ""
-    year = int(release[:4]) if len(release) >= 4 else None
+    return {
+        "id": movie.id,
+        "tmdb_id": movie.tmdb_id,
+        "title": movie.title,
+        "release_date": str(movie.release_date) if movie.release_date else None,
+        "poster_local": f"posters/{tmdb_id}.jpg" if poster_path else None,
+        "message": "Movie imported successfully. Poster downloading in background.",
+    }
 
-    movie = Movie(
-        tmdb_id=data["id"],
-        imdb_id=data.get("imdb_id"),
-        title=data.get("title", ""),
-        original_title=data.get("original_title"),
-        year=year,
-        overview=data.get("overview"),
-        tagline=data.get("tagline"),
-        runtime=data.get("runtime"),
-        language=data.get("original_language"),
-        status=data.get("status"),
-        tmdb_rating=data.get("vote_average"),
-        tmdb_vote_count=data.get("vote_count"),
-        poster_path=data.get("poster_path"),
-        backdrop_path=data.get("backdrop_path"),
-        director=data.get("director"),
-        cast_top5=json.dumps(data.get("cast_top5", [])),
-    )
-    db.add(movie)
-    await db.flush()  # assigns movie.id
 
-    # --- Upsert genres + link ---
-    for genre_data in data.get("genres", []):
-        genre_result = await db.execute(
-            select(Genre).where(Genre.tmdb_id == genre_data["id"])
-        )
-        genre = genre_result.scalar_one_or_none()
-        if not genre:
-            genre = Genre(tmdb_id=genre_data["id"], name=genre_data["name"])
-            db.add(genre)
-            await db.flush()
+@router.get("/")
+def list_movies(
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100,
+) -> Any:
+    """List all movies currently stored in the local database."""
+    from app.models.movie import Movie  # type: ignore
 
-        # Link movie ↔ genre (avoid duplicates)
-        link_result = await db.execute(
-            select(MovieGenre).where(
-                MovieGenre.movie_id == movie.id,
-                MovieGenre.genre_id == genre.id,
-            )
-        )
-        if not link_result.scalar_one_or_none():
-            db.add(MovieGenre(movie_id=movie.id, genre_id=genre.id))
+    movies = db.query(Movie).offset(skip).limit(limit).all()
+    return [
+        {
+            "id": m.id,
+            "tmdb_id": m.tmdb_id,
+            "title": m.title,
+            "release_date": str(m.release_date) if m.release_date else None,
+            "runtime": m.runtime,
+            "vote_average": m.vote_average,
+            "poster_path": m.poster_path,
+            "overview": m.overview,
+            "tagline": m.tagline,
+            "language": m.language,
+        }
+        for m in movies
+    ]
 
-    await db.flush()
+
+@router.get("/{movie_id}")
+def get_movie(
+    movie_id: int,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Get a single locally-stored movie by its local DB id."""
+    from app.models.movie import Movie  # type: ignore
+
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
     return movie
 
 
-# ---------------------------------------------------------------------------
-# Delete
-# ---------------------------------------------------------------------------
+@router.delete("/{movie_id}", status_code=204)
+def delete_movie(
+    movie_id: int,
+    db: Session = Depends(get_db),
+) -> None:
+    """Remove a movie from the local cache (does not affect entries/ratings)."""
+    from app.models.movie import Movie  # type: ignore
 
-@router.delete("/{movie_id}", status_code=204, summary="Delete a local movie")
-async def delete_movie(movie_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Movie).where(Movie.id == movie_id))
-    movie = result.scalar_one_or_none()
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
-    await db.delete(movie)
+    db.delete(movie)
+    db.commit()

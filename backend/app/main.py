@@ -1,55 +1,47 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from contextlib import asynccontextmanager
-import os
+from pathlib import Path
 
 from app.core.config import settings
-from app.core.database import engine, Base
-from app.api import movies, entries, lists, tags, genres, stats, search, sync
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Create DB tables on startup (Alembic handles migrations in production)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    # Ensure media directory exists
-    os.makedirs(settings.MEDIA_DIR, exist_ok=True)
-    yield
-
+from app.api import search as search_router
+from app.api import movies as movies_router
 
 app = FastAPI(
     title="CinemaList API",
-    description="Personal movie tracking app — backend API",
-    version="0.1.0",
-    lifespan=lifespan,
+    description="Personal movie tracking — TMDb-powered backend.",
+    version="0.3.0",
 )
 
-# ── CORS (allows React dev server and future Android app) ──
+# CORS — allow Vite dev server and same-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=[
+        "http://localhost:5173",   # Vite
+        "http://localhost:8000",   # same-origin
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Static files for cached posters ───────────────────────
-if os.path.exists(settings.MEDIA_DIR):
-    app.mount("/media", StaticFiles(directory=settings.MEDIA_DIR), name="media")
+# Serve poster images at /media/posters/<filename>
+media_dir = Path(settings.MEDIA_DIR)
+media_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(media_dir)), name="media")
 
-# ── Routers ───────────────────────────────────────────────
-app.include_router(movies.router,  prefix="/api/movies",  tags=["movies"])
-app.include_router(entries.router, prefix="/api/entries", tags=["entries"])
-app.include_router(lists.router,   prefix="/api/lists",   tags=["lists"])
-app.include_router(tags.router,    prefix="/api/tags",    tags=["tags"])
-app.include_router(genres.router,  prefix="/api/genres",  tags=["genres"])
-app.include_router(stats.router,   prefix="/api/stats",   tags=["stats"])
-app.include_router(search.router,  prefix="/api/search",  tags=["search"])
-app.include_router(sync.router,    prefix="/api/sync",    tags=["sync"])
+# Routers
+app.include_router(search_router.router)
+app.include_router(movies_router.router)
 
 
-@app.get("/api/health")
-async def health_check():
-    return {"status": "ok", "version": "0.1.0"}
+@app.get("/", tags=["health"])
+def root():
+    return {"status": "ok", "app": "CinemaList", "version": "0.3.0"}
+
+
+@app.get("/health", tags=["health"])
+def health():
+    return {"status": "healthy"}
