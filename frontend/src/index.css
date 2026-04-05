@@ -1,0 +1,40 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: #141414;
+  color: #C9C9C9;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1a1a1a; }
+::-webkit-scrollbar-thumb { background: #424242; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #696969; }
+
+/* Poster image */
+.poster-img {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  background-color: #242424;
+  display: block;
+}
+
+/* Film-strip accent bar at top of page */
+.filmstrip-bar {
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #e2b04a 0px, #e2b04a 20px,
+    transparent 20px, transparent 28px
+  );
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+}
