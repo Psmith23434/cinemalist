@@ -1,8 +1,8 @@
 # CinemaList — Complete Project Plan & Technical Guide
 
 > **Repository:** [https://github.com/Psmith23434/cinemalist](https://github.com/Psmith23434/cinemalist)
-> **Platform Target:** Windows PC (local first) → VPS → Android Sync
-> **Stack:** Python · FastAPI · SQLite → PostgreSQL · React · TMDb API
+> **Platform Target:** Windows PC (local first) → Fujitsu Futro S740 / VPS → Android Sync
+> **Stack:** Python · FastAPI · SQLite → PostgreSQL · React · TMDb API · LLM Integration
 
 ---
 
@@ -36,7 +36,7 @@
 Run a **Python backend server** on your PC that your browser connects to via `http://localhost:8000`. This gives you:
 
 - A beautiful, modern UI in the browser (no native GUI limitations)
-- The same backend code reused when you move to a VPS
+- The same backend code reused when you move to a VPS or the Fujitsu Futro S740
 - A ready-made REST API for Android to sync with later
 - No Electron bloat — just Python + a browser you already have
 
@@ -55,16 +55,17 @@ Run a **Python backend server** on your PC that your browser connects to via `ht
          ▼
 [TMDb API — movie metadata]
 [Local /media folder — posters]
+[LLM Proxy — recommendations & AI features]
 ```
 
-When you move to a VPS later:
+When you move to a Fujitsu S740 or VPS later:
 
 ```
 [Android App]   [Browser UI]
        │               │
        └──── HTTPS ────┘
                 │
-         [VPS / FastAPI]
+         [Futro S740 / VPS / FastAPI]
                 │
          [PostgreSQL]
 ```
@@ -93,6 +94,7 @@ The only things that change during migration are the database (SQLite → Postgr
 | **Package Manager** | `pip` + `venv` (beginner friendly) | Built into Python, no extra tools needed |
 | **Deployment (local)** | `uvicorn` ASGI server | Comes with FastAPI, simple one-command startup |
 | **Deployment (VPS)** | Nginx + `gunicorn` + `uvicorn workers` | Production-ready, standard setup |
+| **LLM Integration** | Your existing LLM proxy (GPT/Claude/Gemini) | Recommendations, smart stats, auto-tagging |
 
 ### Why FastAPI over Flask or Django?
 
@@ -214,12 +216,12 @@ These are the features you must have before the app is usable:
 - **Duplicate detection** — warn if you try to add a movie already in your list
 - **Backup/restore** — one-click SQLite database backup to a `.zip` file
 - **Statistics dashboard** — yearly breakdown chart, rating distribution, genre pie chart
+- **LLM-powered features** — see Section 5 (AI Integration) below
 
 ### Advanced Future Features (Phase 7–8)
 
-- **Android app with sync** — connect to your PC or VPS backend
+- **Android app with sync** — connect to your PC or Fujitsu backend
 - **Multi-user support** — separate user accounts with JWT authentication
-- **Recommendation engine** — "You might like..." based on your genre/rating history
 - **Franchise/collection groups** — e.g., MCU films grouped together (TMDb provides collection data)
 - **Letterboxd import** — parse CSV export from Letterboxd into CinemaList
 - **Reminders** — "Rewatch this in 6 months" with a notification
@@ -395,6 +397,21 @@ CREATE TABLE api_cache (
 );
 ```
 
+#### `llm_cache` — cached LLM recommendation results
+
+```sql
+CREATE TABLE llm_cache (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    library_hash    TEXT UNIQUE NOT NULL,  -- hash of watched movies list
+    prompt_used     TEXT NOT NULL,         -- the exact prompt sent to the LLM
+    response_json   TEXT NOT NULL,         -- the raw JSON response from the LLM
+    model_used      TEXT,                  -- e.g. "gpt-4o-mini", "claude-3-haiku"
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+> **Why cache LLM responses?** The recommendations only need to refresh when your library changes. Caching avoids calling the LLM repeatedly for the same data, keeping costs near zero.
+
 #### `sync_log` — for future Android sync tracking
 
 ```sql
@@ -432,6 +449,7 @@ movies ──< user_movie_entries ──< watch_history
 | Raw TMDb JSON | ✅ Cache in `api_cache` | ✅ After 30 days |
 | TMDb community ratings | ✅ Cache | ✅ Refresh weekly |
 | Search results | ✅ Cache 1 hour | ✅ After TTL |
+| LLM recommendations | ✅ Cache in `llm_cache` | ✅ When library changes |
 
 ---
 
@@ -493,17 +511,17 @@ Both the PC app (browser) and Android app should work offline:
 | Phase 2 (VPS) | Add JWT authentication via FastAPI-Users |
 | Phase 3 (Android) | Android stores JWT token, login screen added |
 
-### What Changes When Moving to VPS
+### What Changes When Moving to VPS / Fujitsu S740
 
-| Component | Local PC | VPS |
+| Component | Local PC | Futro S740 / VPS |
 |---|---|---|
-| Database | SQLite file | PostgreSQL |
-| Media storage | `/media/posters/` local folder | VPS `/media/` or S3 bucket |
+| Database | SQLite file | SQLite (Futro) or PostgreSQL (VPS) |
+| Media storage | `/media/posters/` local folder | Same path on new machine |
 | Server | `uvicorn` dev server | `gunicorn` + `nginx` reverse proxy |
-| Domain | `localhost:8000` | `https://yourdomain.com` |
-| HTTPS | Not needed | Required (Let's Encrypt — free) |
-| Authentication | Optional | Required |
-| Env variables | `.env` file | Server environment variables |
+| Domain | `localhost:8000` | Local IP or `https://yourdomain.com` |
+| HTTPS | Not needed locally | Required for outside access |
+| Authentication | Optional | Required for outside access |
+| Migration effort | — | ~1 evening: copy DB + posters, change IP in Android |
 
 SQLAlchemy handles the SQLite → PostgreSQL switch automatically — you only change the `DATABASE_URL` in your `.env` file. The Python code stays the same.
 
@@ -511,7 +529,7 @@ SQLAlchemy handles the SQLite → PostgreSQL switch automatically — you only c
 
 ## 7. Development Roadmap
 
-### Phase 1 — Planning & Repository Setup
+### Phase 1 — Planning & Repository Setup ✅ Done
 
 **Goals:**
 - Set up Python environment, project structure, and Git
@@ -546,9 +564,11 @@ cinemalist/
 │   │   │   ├── entries.py
 │   │   │   ├── lists.py
 │   │   │   ├── search.py
-│   │   │   └── stats.py
+│   │   │   ├── stats.py
+│   │   │   └── ai.py             ← LLM-powered endpoints
 │   │   └── services/             ← business logic
 │   │       ├── tmdb.py           ← TMDb API integration
+│   │       ├── llm.py            ← LLM proxy integration
 │   │       └── sync.py           ← sync logic
 │   ├── migrations/               ← Alembic migration files
 │   ├── media/
@@ -574,7 +594,7 @@ cinemalist/
 
 ---
 
-### Phase 2 — Backend & Database
+### Phase 2 — Backend & Database 🔧 In Progress
 
 **Goals:**
 - Implement all SQLAlchemy models
@@ -666,18 +686,22 @@ app.add_middleware(
 
 ---
 
-### Phase 5 — Testing & Polish
+### Phase 5 — Testing, Polish & AI Integration
 
 **Goals:**
 - Write basic tests for the most important backend logic
 - Fix edge cases: missing posters, duplicate movies, empty states
 - Performance: add database indexes on frequently queried columns
+- Integrate LLM proxy for AI-powered features
 
 **Deliverables:**
 - `pytest` test suite for backend (`backend/tests/`)
 - Database indexes added on key columns
 - Error handling for API failures
 - Friendly error messages in the UI
+- LLM-powered recommendation endpoint
+- Narrative statistics report
+- Auto-tagging suggestions
 
 **Add these indexes in Alembic:**
 ```python
@@ -685,8 +709,265 @@ op.create_index('ix_entries_updated_at', 'user_movie_entries', ['updated_at'])
 op.create_index('ix_movies_tmdb_id', 'movies', ['tmdb_id'])
 ```
 
+---
+
+#### AI Integration (Phase 5) — LLM-Powered Features
+
+You have access to a proxy that supports multiple LLM models (GPT, Claude, Gemini). This is integrated into a new `services/llm.py` service and a new `routers/ai.py` router.
+
+##### How It Works
+
+The LLM does **not** need internet access. It already knows millions of films from its training data. TMDb handles all real-time movie lookups. The two systems work together like this:
+
+```
+Step 1: FastAPI reads your watch history from SQLite
+Step 2: Builds a compact prompt from your top-rated movies
+Step 3: Sends prompt to LLM via your proxy
+Step 4: LLM returns 5-10 movie title suggestions
+Step 5: FastAPI fetches full metadata + posters for each via TMDb
+Step 6: React UI displays rich movie cards with reasons
+```
+
+##### New `.env` variables required
+
+```ini
+LLM_PROXY_URL=https://your-proxy-url/v1/chat/completions
+LLM_API_KEY=your_proxy_api_key
+LLM_MODEL=gpt-4o-mini         # or claude-3-haiku, gemini-1.5-flash, etc.
+```
+
+##### Feature 1 — Personalized Recommendations
+
+**Endpoint:** `GET /api/v1/ai/recommend`
+
+**System prompt (static, sent once per request):**
+```
+You are a personal movie advisor with deep knowledge of world cinema.
+The user will provide their watch history with personal ratings (1-10).
+Recommend exactly 8 movies they have NOT seen.
+
+Return ONLY valid JSON in this exact format, no extra text:
+[
+  {
+    "title": "Movie Title",
+    "year": 2019,
+    "reason": "A detailed explanation of why this specific film suits
+               this user's taste, referencing their watched films,
+               preferred directors, themes, or genres they enjoy."
+  }
+]
+
+Rules:
+- Each reason should be 2-4 sentences, specific and personal
+- Reference actual films from their history when explaining why
+- Vary the recommendations across genres unless history shows overwhelming preference
+- Never include films already in their watched list or watchlist
+- Prioritize lesser-known gems alongside well-known titles
+```
+
+**User prompt (dynamic, built from DB — ~50-80 tokens):**
+```python
+def build_recommendation_prompt(movies: list) -> str:
+    top_rated   = sorted(movies, key=lambda m: m.rating or 0, reverse=True)
+    liked       = [f"{m.title} ({m.rating}/10)" for m in top_rated if (m.rating or 0) >= 7][:12]
+    disliked    = [f"{m.title} ({m.rating}/10)" for m in top_rated if (m.rating or 0) <= 5][:5]
+    top_genres  = get_top_genres(movies, limit=4)
+    fav_titles  = [m.title for m in movies if m.is_favorite][:5]
+
+    parts = [f"Highly rated: {', '.join(liked)}"]
+    if disliked:
+        parts.append(f"Disliked: {', '.join(disliked)}")
+    if fav_titles:
+        parts.append(f"Favourites: {', '.join(fav_titles)}")
+    parts.append(f"Top genres: {', '.join(top_genres)}")
+    parts.append(f"Total watched: {len(movies)} films")
+    return "\n".join(parts)
+```
+
+**Example prompt sent to LLM:**
+```
+Highly rated: Interstellar (9/10), Arrival (9/10), Dune (8.5/10),
+              Blade Runner 2049 (8/10), The Prestige (8/10), Heat (7.5/10)
+Disliked: Transformers (3/10), Fast X (4/10)
+Favourites: Interstellar, Arrival, Dune
+Top genres: Sci-Fi, Thriller, Drama, Crime
+Total watched: 183 films
+```
+
+**Example LLM response:**
+```json
+[
+  {
+    "title": "Annihilation",
+    "year": 2018,
+    "reason": "Alex Garland directed Ex Machina, which shares Arrival's
+               theme of encountering the unknowable. Annihilation has the
+               same slow-burn tension and ambiguous ending you seem to love.
+               Visually striking, philosophically unsettling."
+  },
+  {
+    "title": "Coherence",
+    "year": 2013,
+    "reason": "A micro-budget sci-fi thriller that rewards the same kind
+               of careful attention you give to films like The Prestige.
+               Built on a single clever idea and executed with remarkable
+               tension. One of the most underrated sci-fi films of the decade."
+  }
+]
+```
+
+**Cost estimate:**
+| Component | Tokens | Cost (GPT-4o-mini) |
+|---|---|---|
+| System prompt | ~120 | — |
+| User prompt | ~80 | — |
+| LLM response (8 films) | ~400 | — |
+| **Total** | **~600 tokens** | **~€0.0001 per request** |
+
+At this cost, clicking "Recommend" 1,000 times costs less than **€0.10 total**.
+
+---
+
+##### Feature 2 — Narrative Statistics Report
+
+**Endpoint:** `GET /api/v1/ai/stats-report`
+
+The basic stats page shows numbers. This feature turns those numbers into a readable personal story about your viewing habits.
+
+**System prompt:**
+```
+You are a film critic writing a short personal report about someone's
+movie-watching year. Write in a warm, insightful tone — like a thoughtful
+friend who also loves cinema. Be specific, not generic.
+
+The user will provide their annual statistics. Write 3-4 paragraphs
+covering: overall activity, taste patterns, most interesting discoveries,
+and one forward-looking observation. Do not use bullet points.
+```
+
+**User prompt (built from DB stats):**
+```
+Year: 2024
+Total watched: 63 films
+Average rating: 7.2/10
+Top genres: Sci-Fi (18), Thriller (14), Drama (11)
+Highest rated: Dune Part Two (9.5), Poor Things (9), Zone of Interest (8.5)
+Lowest rated: Aquaman 2 (3), Madame Web (2.5)
+New directors discovered: Yorgos Lanthimos, Jonathan Glazer
+Rewatch count: 4
+Most active month: March (11 films)
+```
+
+---
+
+##### Feature 3 — Auto-Tag Suggestions
+
+**Endpoint:** `POST /api/v1/ai/suggest-tags`
+
+When you add a new movie, the LLM reads the TMDb overview and suggests relevant personal tags.
+
+**System prompt:**
+```
+You are a movie tagging assistant. Based on a film's description,
+suggest 3-5 short personal tags a viewer might use to categorize it.
+Tags should be practical and personal, not just genre labels.
+
+Return ONLY a JSON array of strings. Examples of good tags:
+"#mindfuck", "#slow-burn", "#based-on-true-story", "#feel-good",
+"#rewatch-worthy", "#disturbing", "#visually-stunning", "#cult-classic"
+```
+
+**User prompt:**
+```
+Title: Parasite (2019)
+Overview: Greed and class discrimination threaten the newly formed
+symbiotic relationship between the wealthy Park family and the
+destitute Kim clan.
+Genres: Drama, Thriller, Comedy
+```
+
+**LLM response:**
+```json
+["#class-commentary", "#slow-burn", "#plot-twist", "#rewatch-worthy", "#foreign-language"]
+```
+
+---
+
+##### Feature 4 — Natural Language Search
+
+**Endpoint:** `GET /api/v1/ai/search?q=that+french+heist+movie+I+liked`
+
+Lets you describe a movie vaguely and the LLM matches it against your library.
+
+**System prompt:**
+```
+You are a movie search assistant. The user will describe a movie
+vaguely. Given a list of movies in their library, identify the most
+likely match. Return only the tmdb_id of the best match, or null
+if no match found. Return ONLY valid JSON: {"tmdb_id": 123} or {"tmdb_id": null}
+```
+
+---
+
+##### Caching Strategy for LLM Calls
+
+LLM calls are cached in the `llm_cache` table to avoid redundant API calls:
+
+```python
+import hashlib, json
+
+def get_recommendations(db, movies):
+    # Build a fingerprint of the current library state
+    library_hash = hashlib.md5(
+        json.dumps([(m.tmdb_id, m.rating) for m in sorted(movies, key=lambda x: x.tmdb_id)])
+        .encode()
+    ).hexdigest()
+
+    # Return cached result if library hasn't changed
+    cached = db.query(LlmCache).filter_by(library_hash=library_hash).first()
+    if cached:
+        return json.loads(cached.response_json)
+
+    # Otherwise call the LLM and cache the result
+    prompt  = build_recommendation_prompt(movies)
+    result  = call_llm(prompt)
+    db.add(LlmCache(library_hash=library_hash, prompt_used=prompt,
+                    response_json=json.dumps(result), model_used=LLM_MODEL))
+    db.commit()
+    return result
+```
+
+This means in practice the LLM is only called when you add or rate a new movie — not on every page visit.
+
+---
+
+##### UI Integration
+
+The React frontend gets a new **"For You"** tab on the Statistics page:
+
+```
+[ Overview ] [ Charts ] [ For You ✨ ]
+                                  │
+                     ┌────────────▼────────────┐
+                     │  🎬 Recommended For You  │
+                     │  Based on 183 films      │
+                     │                          │
+                     │  [Poster] Annihilation   │
+                     │  2018 · Sci-Fi · A24     │
+                     │  "Because you gave       │
+                     │  Arrival 9/10..."        │
+                     │                          │
+                     │  [Poster] Coherence      │
+                     │  ...                     │
+                     │                          │
+                     │  [ Refresh suggestions ] │
+                     └──────────────────────────┘
+```
+
 **Risks:**
 - Skipping tests — at minimum, test the TMDb integration and sync endpoints
+- LLM proxy downtime — add a graceful fallback (hide AI features if proxy unreachable)
+- LLM hallucinating wrong movie years — always verify title + year against TMDb after receiving suggestions
 
 ---
 
@@ -719,41 +1000,28 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 ---
 
-### Phase 7 — VPS Migration
+### Phase 7 — Futro S740 / VPS Migration
 
 **Goals:**
-- Set up a Linux VPS (Ubuntu 22.04 recommended)
-- Switch database from SQLite to PostgreSQL
-- Configure Nginx as reverse proxy with HTTPS
-- Add JWT authentication with FastAPI-Users
+- Set up Ubuntu 22.04 on the Fujitsu Futro S740 (or a Linux VPS)
+- Switch database from SQLite to PostgreSQL (optional — SQLite works fine on Futro for personal use)
+- Configure Nginx as reverse proxy
+- Add HTTPS via Let's Encrypt if accessing from outside home network
 
 **Deliverables:**
-- Running production server at `https://yourdomain.com`
-- Nginx config with SSL (Let's Encrypt via Certbot — free)
-- Systemd service file to auto-start the app on reboot
-- PostgreSQL database with data migrated from SQLite
+- Running server on Futro S740 at a fixed local IP (e.g. `192.168.1.100:8000`)
+- Optional: DuckDNS free domain for outside-home access
+- Optional: PostgreSQL + data migrated from SQLite
+- Systemd service to auto-start app on Futro boot
 
-**VPS recommendation:** Hetzner CX22 (€5/month, Germany-based) or Netcup.
+**Migration steps (approx. 1 evening):**
+1. Install Ubuntu Server 22.04 on Futro S740
+2. `scp` the project folder from Windows PC to Futro
+3. `pg_dump` + `pg_restore` if switching to PostgreSQL (optional)
+4. Set Futro to a static local IP in your router
+5. Update one line in Android app: server address from `localhost` to `192.168.1.100`
 
-**Database migration from SQLite to PostgreSQL:**
-```bash
-pgloader sqlite:///cinemalist.db postgresql://user:pass@vps/cinemalist
-```
-
-**Nginx config example:**
-```nginx
-server {
-    server_name yourdomain.com;
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    listen 443 ssl;
-    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
-}
-```
+**VPS alternative:** Hetzner CX22 (~€4/month, Germany) if you want 24/7 outside access without port forwarding.
 
 **Risks:**
 - Database migration data loss — always take a full SQLite backup before migrating
@@ -796,7 +1064,7 @@ POST /api/v1/sync/push
 
 ### Is the Repo Workflow Practical?
 
-Yes. The repository at [https://github.com/Psmith23434/cinemalist](https://github.com/Psmith23434/cinemalist) currently has a README, an HTML prototype, and a sync-server.js file. The plan is to build on this foundation properly with the full Python stack.
+Yes. The repository at [https://github.com/Psmith23434/cinemalist](https://github.com/Psmith23434/cinemalist) currently has a README, project plan, and placeholder files. The plan is to build on this foundation properly with the full Python stack.
 
 ### Can an AI Assistant Commit to Your Repo?
 
@@ -806,7 +1074,7 @@ Yes — an AI assistant with GitHub API access can:
 - You then `git pull` on your PC to get the changes
 
 **Safe workflow:**
-1. AI creates a feature branch (e.g., `feature/add-tmdb-service`)
+1. AI creates a feature branch (e.g., `phase-2/backend`)
 2. AI pushes code to that branch
 3. You review the code on GitHub (Files Changed tab in the Pull Request)
 4. If happy, you merge the pull request
@@ -831,22 +1099,28 @@ Use a simple two-branch strategy (suitable for solo projects):
 
 ```
 main          ← stable, always works, never commit directly
-  └─ feature/tmdb-integration  ← one branch per feature
-  └─ feature/movie-list-ui
+  └─ phase-2/backend
+  └─ phase-3/tmdb-integration
+  └─ phase-4/frontend
+  └─ phase-5/ai-integration
   └─ fix/poster-download-error
 ```
 
 **Workflow:**
 ```bash
-# Start a new feature
-git checkout -b feature/tmdb-integration
+# Get latest from main
+git checkout main
+git pull origin main
+
+# Start a new phase/feature
+git checkout -b phase-2/backend
 
 # Work, commit often
 git add .
-git commit -m "feat: add TMDb search endpoint"
+git commit -m "feat: add SQLAlchemy models"
 
 # Push to GitHub
-git push origin feature/tmdb-integration
+git push origin phase-2/backend
 
 # On GitHub: open a Pull Request → review → merge to main
 # On PC:
@@ -911,6 +1185,11 @@ DATABASE_URL=sqlite:///./cinemalist.db
 MEDIA_DIR=./media
 SECRET_KEY=change_this_to_a_random_string_later
 DEBUG=True
+
+# LLM Proxy (add when reaching Phase 5)
+LLM_PROXY_URL=https://your-proxy-url/v1/chat/completions
+LLM_API_KEY=your_proxy_api_key
+LLM_MODEL=gpt-4o-mini
 ```
 
 Add to `.gitignore`:
@@ -930,6 +1209,9 @@ DATABASE_URL=sqlite:///./cinemalist.db
 MEDIA_DIR=./media
 SECRET_KEY=generate_a_random_string
 DEBUG=True
+LLM_PROXY_URL=https://your-proxy-url/v1/chat/completions
+LLM_API_KEY=your_proxy_api_key
+LLM_MODEL=gpt-4o-mini
 ```
 
 #### Step 6 — Run Database Migrations
@@ -958,7 +1240,7 @@ Visit `http://localhost:5173` — React app is running.
 
 ### Do You Need Docker?
 
-**No — Docker is completely optional at this stage.** Skip it for now and add it in Phase 7 (VPS deployment) if needed. For local development on your own PC with SQLite, Docker adds complexity without any benefit.
+**No — Docker is completely optional at this stage.** Skip it for now and add it in Phase 7 (Futro/VPS deployment) if needed. For local development on your own PC with SQLite, Docker adds complexity without any benefit.
 
 ---
 
@@ -972,10 +1254,12 @@ Visit `http://localhost:5173` — React app is running.
 | Layer | Choice |
 |---|---|
 | Backend | Python 3.11 + FastAPI + SQLAlchemy + Alembic |
-| Database | SQLite (local) → PostgreSQL (VPS later) |
+| Database | SQLite (local) → PostgreSQL (VPS later, optional on Futro) |
 | Frontend | React + Vite + Mantine UI |
 | Movie API | TMDb (free, best quality) |
+| AI Features | LLM proxy (GPT/Claude/Gemini) — Phase 5 |
 | Sync | UUID primary keys + `updated_at` timestamps from day one |
+| Future server | Fujitsu Futro S740 (Ubuntu) — own hardware, ~€0/month |
 
 ### Day 1 Action List
 
@@ -985,7 +1269,7 @@ Visit `http://localhost:5173` — React app is running.
 4. **Create `.env`** with your TMDb key and `DATABASE_URL=sqlite:///./cinemalist.db`
 5. **Create the database models** using the schema in Section 5 — start with `movies` and `user_movie_entries`
 6. **Test the TMDb search** — make one API call manually in Python before building anything else
-7. **Build upward from there** — backend endpoints first, then UI
+7. **Build upward from there** — backend endpoints first, then UI, then AI features in Phase 5
 
 ### The Most Important Principle
 
