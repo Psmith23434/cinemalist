@@ -20,7 +20,7 @@ async def _tmdb_get(path: str, params: dict, db: AsyncSession) -> dict:
     # Check cache
     cached = (await db.execute(select(TmdbCache).where(TmdbCache.cache_key == cache_key))).scalar_one_or_none()
     if cached and cached.expires_at and cached.expires_at > datetime.now(timezone.utc):
-        return json.loads(cached.data)
+        return json.loads(cached.data_json)
 
     # Fetch from TMDb
     async with httpx.AsyncClient() as client:
@@ -37,11 +37,11 @@ async def _tmdb_get(path: str, params: dict, db: AsyncSession) -> dict:
 
     # Upsert cache
     if cached:
-        cached.data = json.dumps(data)
+        cached.data_json = json.dumps(data)
         cached.expires_at = expires_at
         cached.fetched_at = datetime.now(timezone.utc)
     else:
-        db.add(TmdbCache(cache_key=cache_key, data=json.dumps(data), expires_at=expires_at))
+        db.add(TmdbCache(cache_key=cache_key, data_json=json.dumps(data), expires_at=expires_at))
     await db.flush()
 
     return data
