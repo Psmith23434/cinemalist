@@ -1,22 +1,22 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from pydantic import BaseModel
+from typing import Optional, List
 from datetime import datetime
+from .entry import EntryRead
 
 
-class ListCreate(BaseModel):
+class MovieListCreate(BaseModel):
     name: str
     description: Optional[str] = None
     is_public: bool = False
 
 
-class ListUpdate(BaseModel):
+class MovieListUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     is_public: Optional[bool] = None
 
 
-class ListOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class MovieListRead(BaseModel):
     id: int
     uuid: str
     name: str
@@ -25,4 +25,10 @@ class ListOut(BaseModel):
     is_system: bool
     created_at: datetime
     updated_at: datetime
-    item_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class MovieListDetail(MovieListRead):
+    """Full list including its items."""
+    items: List[EntryRead] = []
