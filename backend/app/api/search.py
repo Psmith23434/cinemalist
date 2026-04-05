@@ -1,68 +1,78 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+"""
+Search router — /api/search
+
+Endpoints
+---------
+GET  /api/search/tmdb              Search TMDb by title (cached 7 days)
+GET  /api/search/tmdb/{tmdb_id}    Full TMDb movie details (cached 7 days)
+POST /api/search/tmdb/import       Import a TMDb movie into the local DB
+"""
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+
 from app.core.database import get_db
-from app.models.tmdb_cache import TmdbCache
 from app.core.config import settings
-from datetime import datetime, timezone, timedelta
-import httpx
-import json
+from app.models.movie import Movie
+from app.schemas.movie import MovieOut
+from app.services import tmdb as tmdb_service
+from pydantic import BaseModel
 
 router = APIRouter()
 
-TMDB_CACHE_TTL_DAYS = 7
+
+# ── Pydantic schemas local to this router ─────────────────────────────────────
+
+class TmdbImportRequest(BaseModel):
+    tmdb_id: int
 
 
-async def _tmdb_get(path: str, params: dict, db: AsyncSession) -> dict:
-    """Fetch from TMDb with local DB caching."""
-    cache_key = path + "::" + json.dumps(params, sort_keys=True)
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
-    # Check cache
-    cached = (await db.execute(select(TmdbCache).where(TmdbCache.cache_key == cache_key))).scalar_one_or_none()
-    if cached and cached.expires_at and cached.expires_at > datetime.now(timezone.utc):
-        return json.loads(cached.data_json)
-
-    # Fetch from TMDb
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{settings.TMDB_BASE_URL}{path}",
-            params={"api_key": settings.TMDB_API_KEY, **params},
-            timeout=10.0,
-        )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"TMDb error: {resp.status_code}")
-
-    data = resp.json()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=TMDB_CACHE_TTL_DAYS)
-
-    # Upsert cache
-    if cached:
-        cached.data_json = json.dumps(data)
-        cached.expires_at = expires_at
-        cached.fetched_at = datetime.now(timezone.utc)
-    else:
-        db.add(TmdbCache(cache_key=cache_key, data_json=json.dumps(data), expires_at=expires_at))
-    await db.flush()
-
-    return data
-
-
-@router.get("/tmdb")
+@router.get("/tmdb", summary="Search TMDb by title")
 async def search_tmdb(
-    q: str = Query(..., min_length=1),
-    page: int = Query(1, ge=1),
+    q: str = Query(..., min_length=1, description="Movie title to search"),
+    page: int = Query(1, ge=1, description="TMDb results page"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search TMDb for movies by title. Results cached for 7 days."""
-    data = await _tmdb_get("/search/movie", {"query": q, "page": page, "include_adult": "false"}, db)
-    return data
+    """
+    Proxy to TMDb /search/movie.  Results are cached locally for 7 days.
+    Returns the raw TMDb response so the UI can display poster thumbnails
+    and select which film to import.
+    """
+    return await tmdb_service.search_movies(q, page, db)
 
 
-@router.get("/tmdb/{tmdb_id}")
-async def get_tmdb_movie(
+@router.get("/tmdb/{tmdb_id}", summary="Get full TMDb movie details")
+async def get_tmdb_details(
     tmdb_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get full movie details from TMDb (cast, crew, genres, etc.)."""
-    data = await _tmdb_get(f"/movie/{tmdb_id}", {"append_to_response": "credits"}, db)
-    return data
+    """
+    Returns the full TMDb detail payload including credits.
+    Cached locally for 7 days.
+    """
+    return await tmdb_service.get_movie_details(tmdb_id, db)
+
+
+@router.post("/tmdb/import", response_model=MovieOut, status_code=201,
+             summary="Import a TMDb movie into your library")
+async def import_from_tmdb(
+    body: TmdbImportRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetches full details from TMDb and upserts the movie into the local
+    `movies` table, including all genres via the `movie_genres` join table.
+
+    - If the movie already exists (same `tmdb_id`) it is **updated** in-place.
+    - Returns the full `MovieOut` schema so the UI can immediately display
+      the imported movie.
+
+    After calling this endpoint you can create a personal `entry` via
+    `POST /api/entries/` referencing the returned `movie_id`.
+    """
+    movie: Movie = await tmdb_service.import_movie(body.tmdb_id, db)
+    # Eagerly reload genres relationship so response_model can serialise it
+    await db.refresh(movie, attribute_names=["genres"])
+    return movie
