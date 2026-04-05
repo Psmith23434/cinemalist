@@ -1,62 +1,62 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-05
+> Last updated: 2026-04-05 23:25 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned
 
 ---
 
 ## Phase 1 — Planning & Repository Setup ✅ DONE
 
-| # | Task | Status |
-|---|---|---|
-| 1.1 | Create GitHub repository | ✅ |
-| 1.2 | Define full project plan (`PROJECT_PLAN.md`) | ✅ |
-| 1.3 | Set up folder structure (`backend/`, `frontend/`, etc.) | ✅ |
-| 1.4 | Add `.gitignore`, `.env.example`, `README.md` | ✅ |
-| 1.5 | Choose tech stack (FastAPI + SQLite + React + TMDb) | ✅ |
-| 1.6 | Define database schema (all 11 tables) | ✅ |
-| 1.7 | Define API design & sync strategy | ✅ |
+| # | Task | Status | Evidence |
+|---|---|---|---|
+| 1.1 | Create GitHub repository | ✅ | `github.com/Psmith23434/cinemalist` |
+| 1.2 | Define full project plan (`PROJECT_PLAN.md`) | ✅ | `/PROJECT_PLAN.md` (45 KB) |
+| 1.3 | Set up folder structure (`backend/`, etc.) | ✅ | `backend/app/`, `backend/alembic/` |
+| 1.4 | Add `.gitignore`, `.env.example`, `README.md` | ✅ | `/README.md`, `backend/.env.example` |
+| 1.5 | Choose tech stack (FastAPI + SQLite + React + TMDb) | ✅ | Documented in `PROJECT_PLAN.md` |
+| 1.6 | Define database schema (all 11 tables) | ✅ | ORM models + migration |
+| 1.7 | Define API design & sync strategy | ✅ | Documented in `PROJECT_PLAN.md` |
 
 ---
 
 ## Phase 2 — Backend & Database ✅ DONE
 
-| # | Task | Status |
-|---|---|---|
-| 2.1 | Set up Python virtual environment + `requirements.txt` | ✅ |
-| 2.2 | Create FastAPI app entry point (`app/main.py`) | ✅ |
-| 2.3 | Configure SQLAlchemy + Alembic (`database.py`, `alembic.ini`) | ✅ |
-| 2.4 | Write all SQLAlchemy ORM models | ✅ |
-| | → `movies`, `genres`, `movie_genres` | ✅ |
-| | → `entries`, `watch_events` | ✅ |
-| | → `tags`, `entry_tags` | ✅ |
-| | → `lists`, `list_items` | ✅ |
-| | → `tmdb_cache`, `sync_log` | ✅ |
-| 2.5 | Write Alembic migration (`0001_initial_tables.py`) | ✅ |
-| 2.6 | Apply migration → `cinemalist.db` created | ✅ |
-| 2.7 | Build GUI launcher (`launcher.py`) with Start/Stop/Open Docs | ✅ |
+| # | Task | Status | Evidence |
+|---|---|---|---|
+| 2.1 | Set up Python virtual environment + `requirements.txt` | ✅ | `backend/requirements.txt` |
+| 2.2 | Create FastAPI app entry point (`app/main.py`) | ✅ | `backend/app/main.py` (2.1 KB) |
+| 2.3 | Configure SQLAlchemy + Alembic (`database.py`, `alembic.ini`) | ✅ | `backend/alembic.ini`, `backend/app/core/` |
+| 2.4 | Write all SQLAlchemy ORM models | ✅ | `backend/app/models/` |
+| | → `movies`, `genres`, `movie_genres` | ✅ | |
+| | → `entries`, `watch_events` | ✅ | |
+| | → `tags`, `entry_tags` | ✅ | |
+| | → `lists`, `list_items` | ✅ | |
+| | → `tmdb_cache`, `sync_log` | ✅ | |
+| 2.5 | Write Alembic migration (`0001_initial_tables.py`) | ✅ | `backend/alembic/versions/0001_initial_tables.py` |
+| 2.6 | Apply migration → `cinemalist.db` created | ⏳ | Run `alembic upgrade head` locally |
+| 2.7 | Build `run.py` helper script | ✅ | `backend/run.py` |
+| 2.8 | Build GUI launcher (`launcher.py`) with Start/Stop/Open Docs | ✅ | `/launcher.py` (17.9 KB) |
+| 2.9 | Add `start.bat` one-click startup script | ✅ | `/start.bat` |
 
 ---
 
 ## Phase 3 — TMDb API Integration ✅ DONE
 
-> Merged via PR #3 on 2026-04-05
+| # | Task | Status | Evidence |
+|---|---|---|---|
+| 3.1 | Create `app/services/tmdb.py` — search, detail, import | ✅ | `backend/app/services/tmdb.py` (7.6 KB) |
+| 3.2 | Implement cache-first logic (7-day TTL in `tmdb_cache`) | ✅ | Inside `tmdb.py` |
+| 3.3 | Download + store poster images to `media/posters/` | 🔲 | Deferred — posters served via TMDb CDN URLs for now |
+| 3.4 | Write Pydantic schemas | ✅ | `schemas/movie.py`, `schemas/entry.py`, `schemas/stats.py`, `schemas/list.py` |
+| 3.5 | Build API router: `GET /api/search/tmdb?q=` | ✅ | `backend/app/api/search.py` |
+| 3.6 | Build API router: `POST /api/search/tmdb/import` | ✅ | `backend/app/api/search.py` |
+| 3.7 | Build API router: `GET /api/movies/` with genre/sort/direction filters | ✅ | `backend/app/api/movies.py` (5.9 KB) |
+| 3.8 | Build CRUD for entries: `POST/GET/PUT/DELETE /api/entries/` | ✅ | `backend/app/api/entries.py` (5.0 KB) |
+| 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ | `genres.py`, `tags.py`, `lists.py`, `stats.py`, `sync.py` |
+| 3.10 | Test all endpoints in Swagger UI (`/docs`) | ⏳ | Requires local `alembic upgrade head` + `.env` with TMDb key |
 
-| # | Task | Status |
-|---|---|---|
-| 3.1 | Create `app/services/tmdb.py` — search, detail, import | ✅ |
-| 3.2 | Implement cache-first logic (7-day TTL in `tmdb_cache`) | ✅ |
-| 3.3 | Download + store poster images to `media/posters/` | 🔲 |
-| 3.4 | Write Pydantic schemas (`schemas/movie.py`, `schemas/entry.py`, `schemas/stats.py`) | ✅ |
-| 3.5 | Build API router: `GET /api/search/tmdb?q=` | ✅ |
-| 3.6 | Build API router: `POST /api/search/tmdb/import` | ✅ |
-| 3.7 | Build API router: `GET /api/movies/` with genre/sort/direction filters | ✅ |
-| 3.8 | Build CRUD for entries: `POST/GET/PUT/DELETE /api/entries/` | ✅ |
-| 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ |
-| 3.10 | Test all endpoints in Swagger UI (`/docs`) | ⏳ |
-
-> **Note (3.3):** Poster images are currently served via TMDb CDN URLs (`poster_url` computed field).
-> Local caching to `media/posters/` is a nice-to-have for offline use — deferred to Phase 5/6.
+> **Note (3.3):** `poster_url` is a computed field returning the TMDb CDN link. Local caching deferred to Phase 5/6.
+> **Note (3.10):** All code is present and wired in `main.py`. Manual smoke-test pending on your machine.
 
 ---
 
@@ -101,9 +101,10 @@
 | 6.1 | Build React frontend → copy output to `backend/static/` | 🔲 |
 | 6.2 | Configure FastAPI to serve static frontend at `/` | 🔲 |
 | 6.3 | Test full single-server setup (FastAPI serves both API + UI) | 🔲 |
-| 6.4 | Write `start.bat` one-click startup script | ✅ |
-| 6.5 | Update `launcher.py` GUI to use production mode | 🔲 |
-| 6.6 | Document full Windows setup in `README.md` | 🔲 |
+| 6.4 | `start.bat` one-click startup script | ✅ |
+| 6.5 | `launcher.py` GUI (Start / Stop / Open Docs / Open Folder) | ✅ |
+| 6.6 | Update launcher to build + serve production mode | 🔲 |
+| 6.7 | Document full Windows setup in `README.md` | 🔲 |
 
 ---
 
@@ -116,7 +117,7 @@
 | 7.3 | Set static local IP on Futro in router | 🔲 |
 | 7.4 | Set up `gunicorn` + `nginx` reverse proxy | 🔲 |
 | 7.5 | Add systemd service (auto-start on boot) | 🔲 |
-| 7.6 | (Optional) Switch SQLite → PostgreSQL via SQLAlchemy `DATABASE_URL` | 🔲 |
+| 7.6 | (Optional) Switch SQLite → PostgreSQL via `DATABASE_URL` | 🔲 |
 | 7.7 | (Optional) Add HTTPS via Let's Encrypt / DuckDNS | 🔲 |
 | 7.8 | Add JWT authentication (FastAPI-Users) for outside access | 🔲 |
 
@@ -126,14 +127,15 @@
 
 | # | Task | Status |
 |---|---|---|
-| 8.1 | Build sync endpoints: `GET /api/sync?since=` | 🔲 |
-| 8.2 | Build sync push: `POST /api/sync/push` | 🔲 |
-| 8.3 | Set up React Native + Expo project | 🔲 |
-| 8.4 | Implement local SQLite on Android (offline-first) | 🔲 |
-| 8.5 | Implement background sync with conflict resolution | 🔲 |
-| 8.6 | Add login screen + JWT token storage on Android | 🔲 |
-| 8.7 | Port all MVP features to Android UI | 🔲 |
-| 8.8 | Test sync between PC and Android | 🔲 |
+| 8.1 | Sync endpoints skeleton already in `api/sync.py` | ✅ |
+| 8.2 | Flesh out `GET /api/sync?since=` (delta pull) | 🔲 |
+| 8.3 | Flesh out `POST /api/sync/push` (conflict resolution) | 🔲 |
+| 8.4 | Set up React Native + Expo project | 🔲 |
+| 8.5 | Implement local SQLite on Android (offline-first) | 🔲 |
+| 8.6 | Implement background sync with conflict resolution | 🔲 |
+| 8.7 | Add login screen + JWT token storage on Android | 🔲 |
+| 8.8 | Port all MVP features to Android UI | 🔲 |
+| 8.9 | Test sync between PC and Android | 🔲 |
 
 ---
 
@@ -149,18 +151,70 @@
 | E.6 | Franchise/collection grouping (TMDb collection data) | 🔲 |
 | E.7 | Public profile page (shareable top-rated films) | 🔲 |
 | E.8 | Multi-user support (separate accounts) | 🔲 |
+| E.9 | `sync-server.js` (Node.js sync prototype, present in repo root) | 🔲 |
+
+---
+
+## Current Repo File Inventory
+
+```
+/
+├── PROJECT_PLAN.md          ✅ full project spec
+├── PROJEKT_STEPS.md         ✅ this file
+├── README.md                ✅
+├── launcher.py              ✅ GUI launcher (tkinter, dark cinema theme)
+├── start.bat                ✅ one-click CMD startup
+├── cinemalist.html          ✅ placeholder / future static entry
+├── sync-server.js           ✅ Node.js sync prototype (future)
+└── backend/
+    ├── .env.example         ✅
+    ├── README.md            ✅
+    ├── alembic.ini          ✅
+    ├── requirements.txt     ✅
+    ├── run.py               ✅
+    ├── alembic/
+    │   └── versions/
+    │       └── 0001_initial_tables.py  ✅
+    └── app/
+        ├── main.py          ✅
+        ├── models/          ✅ (all 11 ORM models)
+        ├── schemas/
+        │   ├── movie.py     ✅
+        │   ├── entry.py     ✅
+        │   ├── stats.py     ✅
+        │   └── list.py      ✅
+        ├── services/
+        │   └── tmdb.py      ✅ (search, detail, cache, import)
+        ├── api/
+        │   ├── search.py    ✅ (TMDb search + import)
+        │   ├── movies.py    ✅ (CRUD + filters)
+        │   ├── entries.py   ✅ (CRUD)
+        │   ├── genres.py    ✅
+        │   ├── tags.py      ✅
+        │   ├── lists.py     ✅
+        │   ├── stats.py     ✅
+        │   └── sync.py      ✅ (skeleton)
+        └── core/            ✅ (config, database session)
+```
+
+> **Missing / not yet created:**
+> - `frontend/` — entire React + Vite app (Phase 4)
+> - `backend/tests/` — pytest suite (Phase 5)
+> - `backend/app/services/llm.py` — AI service (Phase 5)
+> - `media/posters/` — local poster cache (Phase 5/6)
+> - `cinemalist.db` — created on first `alembic upgrade head` run
 
 ---
 
 ## Progress Overview
 
 ```
-Phase 1  [██████████] 100% ✅
-Phase 2  [██████████] 100% ✅
-Phase 3  [█████████░]  90% ✅ (3.3 poster local cache deferred; 3.10 manual test pending)
-Phase 4  [          ]   0% ⏳ ← YOU ARE HERE
-Phase 5  [          ]   0% 🔲
-Phase 6  [░         ]   5% 🔲 (start.bat exists)
-Phase 7  [          ]   0% 🔲
-Phase 8  [          ]   0% 🔲
+Phase 1  [██████████] 100% ✅  Planning & repo setup
+Phase 2  [█████████░]  95% ✅  Backend + DB (migration done, DB apply is local step)
+Phase 3  [█████████░]  90% ✅  TMDb integration (3.3 poster cache + 3.10 live test pending)
+Phase 4  [          ]   0% ⏳  ← YOU ARE HERE  (React frontend)
+Phase 5  [          ]   0% 🔲  Testing + AI
+Phase 6  [██        ]  20% 🔲  (start.bat + launcher.py done, rest needs frontend)
+Phase 7  [          ]   0% 🔲  Server/VPS
+Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
 ```
