@@ -1,7 +1,7 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-05 23:25 CEST
-> **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned
+> Last updated: 2026-04-05 23:33 CEST
+> **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
 
@@ -46,7 +46,7 @@
 |---|---|---|---|
 | 3.1 | Create `app/services/tmdb.py` — search, detail, import | ✅ | `backend/app/services/tmdb.py` (7.6 KB) |
 | 3.2 | Implement cache-first logic (7-day TTL in `tmdb_cache`) | ✅ | Inside `tmdb.py` |
-| 3.3 | Download + store poster images to `media/posters/` | 🔲 | Deferred — posters served via TMDb CDN URLs for now |
+| 3.3 | ~~Download + store poster images to `media/posters/`~~ | 🚫 | **Won't do** — posters are served via TMDb CDN URLs (`poster_url` computed field). This is the permanent approach. |
 | 3.4 | Write Pydantic schemas | ✅ | `schemas/movie.py`, `schemas/entry.py`, `schemas/stats.py`, `schemas/list.py` |
 | 3.5 | Build API router: `GET /api/search/tmdb?q=` | ✅ | `backend/app/api/search.py` |
 | 3.6 | Build API router: `POST /api/search/tmdb/import` | ✅ | `backend/app/api/search.py` |
@@ -55,7 +55,6 @@
 | 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ | `genres.py`, `tags.py`, `lists.py`, `stats.py`, `sync.py` |
 | 3.10 | Test all endpoints in Swagger UI (`/docs`) | ⏳ | Requires local `alembic upgrade head` + `.env` with TMDb key |
 
-> **Note (3.3):** `poster_url` is a computed field returning the TMDb CDN link. Local caching deferred to Phase 5/6.
 > **Note (3.10):** All code is present and wired in `main.py`. Manual smoke-test pending on your machine.
 
 ---
@@ -113,7 +112,7 @@
 | # | Task | Status |
 |---|---|---|
 | 7.1 | Install Ubuntu 22.04 on Futro S740 (or provision VPS) | 🔲 |
-| 7.2 | Copy project + database + media folder to new machine | 🔲 |
+| 7.2 | Copy project + database to new machine | 🔲 |
 | 7.3 | Set static local IP on Futro in router | 🔲 |
 | 7.4 | Set up `gunicorn` + `nginx` reverse proxy | 🔲 |
 | 7.5 | Add systemd service (auto-start on boot) | 🔲 |
@@ -201,7 +200,6 @@
 > - `frontend/` — entire React + Vite app (Phase 4)
 > - `backend/tests/` — pytest suite (Phase 5)
 > - `backend/app/services/llm.py` — AI service (Phase 5)
-> - `media/posters/` — local poster cache (Phase 5/6)
 > - `cinemalist.db` — created on first `alembic upgrade head` run
 
 ---
@@ -211,7 +209,7 @@
 ```
 Phase 1  [██████████] 100% ✅  Planning & repo setup
 Phase 2  [█████████░]  95% ✅  Backend + DB (migration done, DB apply is local step)
-Phase 3  [█████████░]  90% ✅  TMDb integration (3.3 poster cache + 3.10 live test pending)
+Phase 3  [██████████] 100% ✅  TMDb integration complete
 Phase 4  [          ]   0% ⏳  ← YOU ARE HERE  (React frontend)
 Phase 5  [          ]   0% 🔲  Testing + AI
 Phase 6  [██        ]  20% 🔲  (start.bat + launcher.py done, rest needs frontend)
