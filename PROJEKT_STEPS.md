@@ -38,23 +38,29 @@
 
 ---
 
-## Phase 3 — TMDb API Integration ⏳ UP NEXT
+## Phase 3 — TMDb API Integration ✅ DONE
+
+> Merged via PR #3 on 2026-04-05
 
 | # | Task | Status |
 |---|---|---|
-| 3.1 | Create `app/services/tmdb.py` — search & fetch movie details | ⏳ |
-| 3.2 | Implement cache-first logic (30-day TTL in `tmdb_cache`) | ⏳ |
-| 3.3 | Download + store poster images to `media/posters/` | ⏳ |
-| 3.4 | Write Pydantic schemas (`schemas/movie.py`, `schemas/entry.py`) | ⏳ |
-| 3.5 | Build API router: `GET /api/v1/search?q=` | ⏳ |
-| 3.6 | Build API router: `POST /api/v1/movies/import/{tmdb_id}` | ⏳ |
-| 3.7 | Build API router: `GET /api/v1/movies` (full library) | ⏳ |
-| 3.8 | Build CRUD for entries: `POST/GET/PUT/DELETE /api/v1/entries` | ⏳ |
-| 3.9 | Test all endpoints in Swagger UI (`/docs`) | ⏳ |
+| 3.1 | Create `app/services/tmdb.py` — search, detail, import | ✅ |
+| 3.2 | Implement cache-first logic (7-day TTL in `tmdb_cache`) | ✅ |
+| 3.3 | Download + store poster images to `media/posters/` | 🔲 |
+| 3.4 | Write Pydantic schemas (`schemas/movie.py`, `schemas/entry.py`, `schemas/stats.py`) | ✅ |
+| 3.5 | Build API router: `GET /api/search/tmdb?q=` | ✅ |
+| 3.6 | Build API router: `POST /api/search/tmdb/import` | ✅ |
+| 3.7 | Build API router: `GET /api/movies/` with genre/sort/direction filters | ✅ |
+| 3.8 | Build CRUD for entries: `POST/GET/PUT/DELETE /api/entries/` | ✅ |
+| 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ |
+| 3.10 | Test all endpoints in Swagger UI (`/docs`) | ⏳ |
+
+> **Note (3.3):** Poster images are currently served via TMDb CDN URLs (`poster_url` computed field).
+> Local caching to `media/posters/` is a nice-to-have for offline use — deferred to Phase 5/6.
 
 ---
 
-## Phase 4 — React Frontend / UI 🔲 PLANNED
+## Phase 4 — React Frontend / UI ⏳ UP NEXT
 
 | # | Task | Status |
 |---|---|---|
@@ -79,10 +85,10 @@
 | 5.2 | Add database indexes on frequently queried columns | 🔲 |
 | 5.3 | Add error handling: missing posters, API failures, duplicates | 🔲 |
 | 5.4 | Implement `app/services/llm.py` — LLM proxy connection | 🔲 |
-| 5.5 | Build `GET /api/v1/ai/recommend` — personalised recommendations | 🔲 |
-| 5.6 | Build `GET /api/v1/ai/stats-report` — narrative stats summary | 🔲 |
-| 5.7 | Build `POST /api/v1/ai/suggest-tags` — auto-tag suggestions | 🔲 |
-| 5.8 | Build `GET /api/v1/ai/search` — natural language library search | 🔲 |
+| 5.5 | Build `GET /api/ai/recommend` — personalised recommendations | 🔲 |
+| 5.6 | Build `GET /api/ai/stats-report` — narrative stats summary | 🔲 |
+| 5.7 | Build `POST /api/ai/suggest-tags` — auto-tag suggestions | 🔲 |
+| 5.8 | Build `GET /api/ai/search` — natural language library search | 🔲 |
 | 5.9 | Add LLM response caching (`llm_cache` table) | 🔲 |
 | 5.10 | Add "For You ✨" tab in React Statistics page | 🔲 |
 
@@ -95,7 +101,7 @@
 | 6.1 | Build React frontend → copy output to `backend/static/` | 🔲 |
 | 6.2 | Configure FastAPI to serve static frontend at `/` | 🔲 |
 | 6.3 | Test full single-server setup (FastAPI serves both API + UI) | 🔲 |
-| 6.4 | Write `start.bat` one-click startup script | 🔲 |
+| 6.4 | Write `start.bat` one-click startup script | ✅ |
 | 6.5 | Update `launcher.py` GUI to use production mode | 🔲 |
 | 6.6 | Document full Windows setup in `README.md` | 🔲 |
 
@@ -120,8 +126,8 @@
 
 | # | Task | Status |
 |---|---|---|
-| 8.1 | Build sync endpoints: `GET /api/v1/sync?since=` | 🔲 |
-| 8.2 | Build sync push: `POST /api/v1/sync/push` | 🔲 |
+| 8.1 | Build sync endpoints: `GET /api/sync?since=` | 🔲 |
+| 8.2 | Build sync push: `POST /api/sync/push` | 🔲 |
 | 8.3 | Set up React Native + Expo project | 🔲 |
 | 8.4 | Implement local SQLite on Android (offline-first) | 🔲 |
 | 8.5 | Implement background sync with conflict resolution | 🔲 |
@@ -151,10 +157,10 @@
 ```
 Phase 1  [██████████] 100% ✅
 Phase 2  [██████████] 100% ✅
-Phase 3  [          ]   0% ⏳ ← YOU ARE HERE
-Phase 4  [          ]   0% 🔲
+Phase 3  [█████████░]  90% ✅ (3.3 poster local cache deferred; 3.10 manual test pending)
+Phase 4  [          ]   0% ⏳ ← YOU ARE HERE
 Phase 5  [          ]   0% 🔲
-Phase 6  [          ]   0% 🔲
+Phase 6  [░         ]   5% 🔲 (start.bat exists)
 Phase 7  [          ]   0% 🔲
 Phase 8  [          ]   0% 🔲
 ```
