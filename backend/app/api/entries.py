@@ -44,10 +44,18 @@ async def list_entries(
     if is_watchlisted is not None:
         stmt = stmt.where(Entry.is_watchlisted == is_watchlisted)
 
-    total_result = await db.execute(select(func.count()).select_from(
-        select(Entry).where(Entry.deleted_at.is_(None)).subquery()
-    ))
-    total = total_result.scalar_one()
+    # Bug 7 fix: apply the same filters to the count query
+    count_stmt = select(func.count()).select_from(
+        select(Entry).where(Entry.deleted_at.is_(None))
+    )
+    if watched is not None:
+        count_stmt = count_stmt.where(Entry.watched == watched)
+    if is_favorite is not None:
+        count_stmt = count_stmt.where(Entry.is_favorite == is_favorite)
+    if is_watchlisted is not None:
+        count_stmt = count_stmt.where(Entry.is_watchlisted == is_watchlisted)
+
+    total = await db.scalar(count_stmt)
     stmt = stmt.offset((page - 1) * per_page).limit(per_page).order_by(Entry.updated_at.desc())
     result = await db.execute(stmt)
     items = result.scalars().all()
@@ -70,7 +78,6 @@ async def create_entry(body: EntryCreate, db: AsyncSession = Depends(get_db)):
     movie = await db.get(Movie, body.movie_id)
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
-    # Prevent duplicate entries for the same movie
     existing = await db.execute(
         select(Entry).where(Entry.movie_id == body.movie_id, Entry.deleted_at.is_(None))
     )
@@ -79,7 +86,6 @@ async def create_entry(body: EntryCreate, db: AsyncSession = Depends(get_db)):
     entry = Entry(**body.model_dump())
     db.add(entry)
     await db.flush()
-    # Auto-create a WatchEvent if a watch date was provided
     if body.first_watched_at:
         db.add(WatchEvent(
             entry_id=entry.id,
@@ -115,7 +121,7 @@ async def delete_entry(entry_id: int, db: AsyncSession = Depends(get_db)):
     return {"message": "Entry deleted", "ok": True}
 
 
-# ── Watch Events ───────────────────────────────────────────
+# ── Watch Events ───────────────────────────────────────────────────
 
 @router.post("/{entry_id}/watches", response_model=WatchEventRead, status_code=201)
 async def log_watch(
@@ -132,7 +138,6 @@ async def log_watch(
         note=body.note,
     )
     db.add(event)
-    # Update convenience fields on Entry
     if not entry.first_watched_at:
         entry.first_watched_at = event.watched_at
     entry.last_watched_at = event.watched_at
@@ -160,4 +165,24 @@ async def delete_watch(
     if not event or event.entry_id != entry_id:
         raise HTTPException(status_code=404, detail="Watch event not found")
     await db.delete(event)
+    await db.flush()
+
+    # Bug 12 fix: recalculate entry timestamps from remaining watch events
+    entry = await db.get(Entry, entry_id)
+    if entry:
+        remaining = (
+            await db.execute(
+                select(WatchEvent)
+                .where(WatchEvent.entry_id == entry_id)
+                .order_by(WatchEvent.watched_at.desc())
+            )
+        ).scalars().all()
+        if remaining:
+            entry.last_watched_at  = remaining[0].watched_at
+            entry.first_watched_at = remaining[-1].watched_at
+        else:
+            entry.last_watched_at  = None
+            entry.first_watched_at = None
+            entry.watched          = False
+
     return {"message": "Watch event deleted", "ok": True}
