@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models.list import MovieList
 from app.models.list_item import ListItem
 from app.models.entry import Entry
+from app.models.movie import Movie
 from app.schemas.list import MovieListCreate, MovieListUpdate, MovieListRead, MovieListDetail
 from app.schemas.common import MessageResponse
 
@@ -42,6 +43,7 @@ async def get_list(list_id: int, db: AsyncSession = Depends(get_db)):
         .options(
             selectinload(MovieList.items)
             .selectinload(ListItem.entry)
+            .selectinload(Entry.movie)  # Bug 5: was missing — caused MissingGreenlet on serialization
         )
     )
     ml = result.scalar_one_or_none()
@@ -84,13 +86,11 @@ async def add_entry_to_list(
     entry = await db.get(Entry, entry_id)
     if not entry or entry.deleted_at:
         raise HTTPException(status_code=404, detail="Entry not found")
-    # Check for duplicate
     existing = await db.execute(
         select(ListItem).where(ListItem.list_id == list_id, ListItem.entry_id == entry_id)
     )
     if existing.scalar_one_or_none():
         return {"message": "Entry already in list", "ok": True}
-    # Position = current count + 1
     count_result = await db.execute(
         select(ListItem).where(ListItem.list_id == list_id)
     )
