@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from app.core.database import get_db
@@ -26,8 +26,8 @@ class SyncResponse(BaseModel):
 class SyncPushResponse(BaseModel):
     message: str
     ok: bool
-    # Bug 11 fix: client must persist synced_at and pass it as `since=`
-    # on the next GET /sync/pull to avoid re-fetching the full dataset.
+    # Client must persist synced_at and pass it as `since=` on the
+    # next GET /sync/pull to avoid re-fetching the full dataset.
     synced_at: datetime
 
 
@@ -73,19 +73,37 @@ async def sync_push(payload: SyncPayload, db: AsyncSession = Depends(get_db)):
         uuid = entry_data.get("uuid")
         if not uuid:
             continue
+
         existing = await db.execute(select(Entry).where(Entry.uuid == uuid))
         existing_entry = existing.scalar_one_or_none()
+        if not existing_entry:
+            continue
+
         incoming_updated = entry_data.get("updated_at")
-        if existing_entry:
-            if incoming_updated and existing_entry.updated_at:
-                if incoming_updated <= existing_entry.updated_at.isoformat():
-                    continue  # Server version is newer — skip
-            for field in [
-                "rating", "notes", "review",
-                "is_favorite", "is_watchlisted", "watched", "deleted_at",
-            ]:
-                if field in entry_data:
-                    setattr(existing_entry, field, entry_data[field])
+        if incoming_updated and existing_entry.updated_at:
+            # Bug 4 fix: parse both sides to aware datetime objects before
+            # comparing. Raw string comparison fails when Android sends a
+            # Z-suffix timestamp and Python isoformat() omits it.
+            try:
+                incoming_dt = datetime.fromisoformat(
+                    incoming_updated.replace("Z", "+00:00")
+                )
+                server_dt = (
+                    existing_entry.updated_at.replace(tzinfo=timezone.utc)
+                    if existing_entry.updated_at.tzinfo is None
+                    else existing_entry.updated_at
+                )
+                if incoming_dt <= server_dt:
+                    continue  # Server version is newer or equal — skip
+            except (ValueError, AttributeError):
+                continue  # Malformed timestamp — skip rather than corrupt
+
+        for field in [
+            "rating", "notes", "review",
+            "is_favorite", "is_watchlisted", "watched", "deleted_at",
+        ]:
+            if field in entry_data:
+                setattr(existing_entry, field, entry_data[field])
 
     for uuid in payload.deleted_entry_uuids:
         result = await db.execute(select(Entry).where(Entry.uuid == uuid))
