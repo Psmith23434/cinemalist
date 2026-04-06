@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 13:25 CEST
+> Last updated: 2026-04-06 14:45 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -68,7 +68,7 @@
 | 4.2 | Install Mantine UI v7 + `@mantine/dates@7` | ✅ |
 | 4.3 | Build Movie Grid / Library page (poster cards) | ✅ |
 | 4.4 | Build Movie Search page (live TMDb search-as-you-type) | ✅ |
-| 4.5 | Build Movie Detail page (rating, notes, watch date) | ✅ |
+| 4.5 | Build Movie Detail page (rating, notes, watch date, watchlist, tags, lists) | ✅ |
 | 4.6 | Build Statistics page (totals, avg rating, genre breakdown) | ✅ |
 | 4.7 | Build Lists & Tags management | ✅ |
 | 4.8 | Add dark mode toggle | ✅ |
@@ -96,6 +96,16 @@
 | F5 | `LibraryPage.jsx` | `is_favorite` fix; `per_page` fix; client-side sort fixed |
 | F6 | `App.jsx` + `ListDetailPage.jsx` | Added `/lists/:id` route + full list detail page |
 | F7 | `AddMoviePage.jsx` | Duplicate detection: 409 → navigate to existing entry |
+
+### 4.12 Missing UI Sections Added (2026-04-06)
+
+Three features were wired in the API client but had no UI entry point. All three added to `MovieDetailPage.jsx` in commit `e3381b9`:
+
+| # | Feature | What was added |
+|---|---|---|
+| F8 | **Watchlist toggle** | `Switch` component bound to `is_watchlisted`; saved with the main Save button. Blue toggle with clock icon. |
+| F9 | **Tags panel** | `MultiSelect` loaded with all tags from `/api/tags/`. Selecting/deselecting immediately calls `POST /tags/entry/{id}/{tag_id}` or `DELETE` — no extra Save needed. Falls back to a link to the Tags page if no tags exist yet. |
+| F10 | **Add to List** | `Select` dropdown populated from `/api/lists/`. "Add" button calls `POST /lists/{list_id}/entries/{entry_id}`. Shows success notification with list name. Falls back to a link to the Lists page if no lists exist yet. |
 
 ---
 
@@ -293,7 +303,7 @@ The `tmdb_cache` cache key includes all API params, including `language`. This m
 Phase 1  [██████████] 100% ✅  Planning & repo setup
 Phase 2  [██████████] 100% ✅  Backend + DB
 Phase 3  [██████████] 100% ✅  TMDb integration
-Phase 4  [██████████] 100% ✅  React frontend — COMPLETE
+Phase 4  [██████████] 100% ✅  React frontend — TRULY COMPLETE
 Phase 5  [████████  ]  80% 🔶  Testing + AI (5.9 + 5.10 remaining)
 Phase 6  [█████████ ]  90% ✅  Local deployment (README remaining)
 Phase 7  [          ]   0% 🔲  Server/VPS
@@ -305,7 +315,7 @@ Phase 9  [████      ]  40% 🔶  German i18n (backend done, frontend pen
 
 ## ⏳ Immediate Next Steps
 
-1. **Run the test suite locally:** `cd backend && venv\Scripts\activate && pytest -v`
+1. **Run the test suite locally:** `cd backend && venv\\Scripts\\activate && pytest -v`
 2. **Phase 5.9** — Add LLM response caching to avoid repeated identical AI calls.
 3. **Phase 5.10** — Build "For You ✨" tab in the React Statistics/Recommendations page.
 4. **Phase 9.9–9.14** — Add `react-i18next` to frontend + DE/EN language toggle in header.
