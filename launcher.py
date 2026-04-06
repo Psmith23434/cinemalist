@@ -6,15 +6,22 @@ import sys
 import webbrowser
 import time
 import signal
+import shutil
 
-# ── paths ───────────────────────────────────────────────────────────────────
-BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
-BACKEND_DIR  = os.path.join(BASE_DIR, "backend")
-VENV_PYTHON  = os.path.join(BACKEND_DIR, "venv", "Scripts", "python.exe")
-VENV_ALEMBIC = os.path.join(BACKEND_DIR, "venv", "Scripts", "alembic.exe")
-VENV_UVICORN = os.path.join(BACKEND_DIR, "venv", "Scripts", "uvicorn.exe")
+# ── paths ───────────────────────────────────────────────────────────────────────────
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR   = os.path.join(BASE_DIR, "backend")
+FRONTEND_DIR  = os.path.join(BASE_DIR, "frontend")
+VENV_PYTHON   = os.path.join(BACKEND_DIR, "venv", "Scripts", "python.exe")
+VENV_ALEMBIC  = os.path.join(BACKEND_DIR, "venv", "Scripts", "alembic.exe")
+VENV_UVICORN  = os.path.join(BACKEND_DIR, "venv", "Scripts", "uvicorn.exe")
 
-# ── palette (cinema dark theme) ─────────────────────────────────────────────
+# npm: try known location first, then PATH fallback
+NPM_CMD = r"E:\NodeJS\npm.cmd"
+if not os.path.exists(NPM_CMD):
+    NPM_CMD = shutil.which("npm") or "npm"
+
+# ── palette (cinema dark theme) ───────────────────────────────────────────────────────────────
 BG          = "#0f0e0d"
 SURFACE     = "#1a1917"
 SURFACE2    = "#222120"
@@ -26,10 +33,13 @@ ACCENT      = "#e8b84b"
 RED         = "#d16060"
 GREEN       = "#6daa55"
 BLUE        = "#5591c7"
+PURPLE      = "#a86fdf"
 
-# ── state ────────────────────────────────────────────────────────────────────
-server_proc   = None
-server_thread = None
+# ── state ────────────────────────────────────────────────────────────────────────────
+server_proc    = None
+server_thread  = None
+frontend_proc  = None
+frontend_thread = None
 
 
 def _kill_proc_tree(proc):
@@ -51,7 +61,7 @@ def _kill_proc_tree(proc):
         pass
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────────
 class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command,
                  bg=ACCENT, fg=BG, btn_width=180, btn_height=42, radius=8):
@@ -105,7 +115,7 @@ class RoundedButton(tk.Canvas):
         self._draw(self._bg)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────────
 class StatusDot(tk.Canvas):
     def __init__(self, parent, **kw):
         super().__init__(parent, bg=SURFACE, highlightthickness=0, **kw)
@@ -120,9 +130,10 @@ class StatusDot(tk.Canvas):
         if self._anim_id:
             self.after_cancel(self._anim_id)
             self._anim_id = None
-        colors = {"idle": TEXT_FAINT, "running": GREEN, "stopping": RED, "migrating": ACCENT}
+        colors = {"idle": TEXT_FAINT, "running": GREEN, "stopping": RED,
+                  "migrating": ACCENT, "starting": PURPLE}
         c = colors.get(state, TEXT_FAINT)
-        if state in ("running", "migrating"):
+        if state in ("running", "migrating", "starting"):
             self._pulse(c)
         else:
             self.delete("all")
@@ -142,7 +153,7 @@ class StatusDot(tk.Canvas):
         self._anim_id = self.after(80, lambda: self._pulse(color))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────────
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -157,18 +168,17 @@ class App(tk.Tk):
         self.update_idletasks()
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
-        w, h = 520, 590
+        w, h = 520, 700
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
     def _build_ui(self):
-        # ── header: taller so both lines breathe ──────────────────────────────
-        HEADER_H = 76  # was 64, now tall enough for 15pt + 9pt + margins
+        # ── header ──────────────────────────────────────────────────────
+        HEADER_H = 76
         header = tk.Frame(self, bg=SURFACE, height=HEADER_H)
         header.pack(fill="x")
         header.pack_propagate(False)
 
-        # film-reel logo – centred vertically in the taller header
-        logo_y = (HEADER_H - 36) // 2        # = 20 when HEADER_H=76
+        logo_y = (HEADER_H - 36) // 2
         logo = tk.Canvas(header, bg=SURFACE, highlightthickness=0)
         logo.config(width=36, height=36)
         logo.place(x=16, y=logo_y)
@@ -177,93 +187,134 @@ class App(tk.Tk):
         for dx, dy in [(16,4),(26,10),(26,22),(16,28),(6,22),(6,10)]:
             logo.create_oval(dx-3, dy-3, dx+3, dy+3, fill=ACCENT, outline="")
 
-        # text block: two labels stacked, together centred in the header
-        # total text block height ≈ 22 (title) + 4 (gap) + 14 (subtitle) = 40px
-        text_block_top = (HEADER_H - 40) // 2   # = 18 when HEADER_H=76
+        text_block_top = (HEADER_H - 40) // 2
         TEXT_X = 62
-
-        tk.Label(
-            header,
-            text="CinemaList",
-            font=("Segoe UI Semibold", 15),
-            fg=TEXT, bg=SURFACE,
-        ).place(x=TEXT_X, y=text_block_top)
-
-        tk.Label(
-            header,
-            text="Backend Launcher",
-            font=("Segoe UI", 9),
-            fg=TEXT_MUTED, bg=SURFACE,
-        ).place(x=TEXT_X, y=text_block_top + 26)   # 26px below title baseline
+        tk.Label(header, text="CinemaList",
+                 font=("Segoe UI Semibold", 15),
+                 fg=TEXT, bg=SURFACE).place(x=TEXT_X, y=text_block_top)
+        tk.Label(header, text="Dev Launcher",
+                 font=("Segoe UI", 9),
+                 fg=TEXT_MUTED, bg=SURFACE).place(x=TEXT_X, y=text_block_top + 26)
 
         tk.Frame(self, bg=BORDER, height=1).pack(fill="x")
 
-        # ── status card ──────────────────────────────────────────────────
-        status_frame = tk.Frame(self, bg=SURFACE2, pady=16)
-        status_frame.pack(fill="x", padx=16, pady=(14, 0))
-        row = tk.Frame(status_frame, bg=SURFACE2)
-        row.pack(fill="x", padx=16)
+        # ── BACKEND status card ──────────────────────────────────────────────
+        be_card = tk.Frame(self, bg=SURFACE2, pady=12)
+        be_card.pack(fill="x", padx=16, pady=(14, 0))
 
-        self.dot = StatusDot(row)
-        self.dot.pack(side="left", padx=(0, 8))
+        tk.Label(be_card, text="BACKEND",
+                 font=("Segoe UI", 7, "bold"), fg=TEXT_FAINT,
+                 bg=SURFACE2).pack(anchor="w", padx=16)
 
-        self.status_label = tk.Label(row, text="Server is stopped",
-                                     font=("Segoe UI Semibold", 11),
-                                     fg=TEXT_MUTED, bg=SURFACE2)
-        self.status_label.pack(side="left")
+        be_row = tk.Frame(be_card, bg=SURFACE2)
+        be_row.pack(fill="x", padx=16, pady=(4, 0))
+        self.be_dot = StatusDot(be_row)
+        self.be_dot.pack(side="left", padx=(0, 8))
+        self.be_status_label = tk.Label(be_row, text="Stopped",
+                                        font=("Segoe UI Semibold", 11),
+                                        fg=TEXT_MUTED, bg=SURFACE2)
+        self.be_status_label.pack(side="left")
 
-        self.url_label = tk.Label(status_frame, text="",
-                                  font=("Segoe UI", 9), fg=ACCENT,
-                                  bg=SURFACE2, cursor="hand2")
-        self.url_label.pack(pady=(4, 0))
-        self.url_label.bind("<Button-1>",
-                            lambda e: webbrowser.open("http://localhost:8000/docs"))
+        self.be_url_label = tk.Label(be_card, text="",
+                                     font=("Segoe UI", 9), fg=ACCENT,
+                                     bg=SURFACE2, cursor="hand2")
+        self.be_url_label.pack(pady=(2, 0))
+        self.be_url_label.bind("<Button-1>",
+                               lambda e: webbrowser.open("http://localhost:8000/docs"))
 
-        # ── primary buttons ───────────────────────────────────────────────
-        btn_frame = tk.Frame(self, bg=BG)
-        btn_frame.pack(pady=16)
+        # ── FRONTEND status card ──────────────────────────────────────────────
+        fe_card = tk.Frame(self, bg=SURFACE2, pady=12)
+        fe_card.pack(fill="x", padx=16, pady=(8, 0))
+
+        tk.Label(fe_card, text="FRONTEND",
+                 font=("Segoe UI", 7, "bold"), fg=TEXT_FAINT,
+                 bg=SURFACE2).pack(anchor="w", padx=16)
+
+        fe_row = tk.Frame(fe_card, bg=SURFACE2)
+        fe_row.pack(fill="x", padx=16, pady=(4, 0))
+        self.fe_dot = StatusDot(fe_row)
+        self.fe_dot.pack(side="left", padx=(0, 8))
+        self.fe_status_label = tk.Label(fe_row, text="Stopped",
+                                        font=("Segoe UI Semibold", 11),
+                                        fg=TEXT_MUTED, bg=SURFACE2)
+        self.fe_status_label.pack(side="left")
+
+        self.fe_url_label = tk.Label(fe_card, text="",
+                                     font=("Segoe UI", 9), fg=PURPLE,
+                                     bg=SURFACE2, cursor="hand2")
+        self.fe_url_label.pack(pady=(2, 0))
+        self.fe_url_label.bind("<Button-1>",
+                               lambda e: webbrowser.open("http://localhost:5173"))
+
+        # ── backend buttons ───────────────────────────────────────────────────
+        be_btn_frame = tk.Frame(self, bg=BG)
+        be_btn_frame.pack(pady=(14, 0))
 
         self.start_btn = RoundedButton(
-            btn_frame, "\u25b6  Start Server",
-            command=self._start,
+            be_btn_frame, "\u25b6  Start Backend",
+            command=self._start_backend,
             bg=ACCENT, fg=BG, btn_width=200, btn_height=44,
         )
         self.start_btn.pack(side="left", padx=6)
 
         self.stop_btn = RoundedButton(
-            btn_frame, "\u25a0  Stop Server",
-            command=self._stop,
+            be_btn_frame, "\u25a0  Stop Backend",
+            command=self._stop_backend,
             bg=SURFACE2, fg=TEXT_MUTED, btn_width=200, btn_height=44,
         )
         self.stop_btn.pack(side="left", padx=6)
 
-        # ── secondary buttons ──────────────────────────────────────────────
+        # ── frontend buttons ──────────────────────────────────────────────────
+        fe_btn_frame = tk.Frame(self, bg=BG)
+        fe_btn_frame.pack(pady=(8, 0))
+
+        self.fe_start_btn = RoundedButton(
+            fe_btn_frame, "\u25b6  Start Frontend",
+            command=self._start_frontend,
+            bg=PURPLE, fg=TEXT, btn_width=200, btn_height=44,
+        )
+        self.fe_start_btn.pack(side="left", padx=6)
+
+        self.fe_stop_btn = RoundedButton(
+            fe_btn_frame, "\u25a0  Stop Frontend",
+            command=self._stop_frontend,
+            bg=SURFACE2, fg=TEXT_MUTED, btn_width=200, btn_height=44,
+        )
+        self.fe_stop_btn.pack(side="left", padx=6)
+
+        # ── secondary buttons ───────────────────────────────────────────────────
         btn_frame2 = tk.Frame(self, bg=BG)
-        btn_frame2.pack()
+        btn_frame2.pack(pady=(8, 0))
 
         RoundedButton(
-            btn_frame2, "\u2295  Open Swagger UI",
+            btn_frame2, "\u2295  Swagger UI",
             command=lambda: webbrowser.open("http://localhost:8000/docs"),
-            bg=BLUE, fg=TEXT, btn_width=200, btn_height=40,
-        ).pack(side="left", padx=6)
+            bg=BLUE, fg=TEXT, btn_width=120, btn_height=36,
+        ).pack(side="left", padx=4)
 
         RoundedButton(
-            btn_frame2, "\u229e  Open Project Folder",
-            command=lambda: os.startfile(BASE_DIR),
-            bg=SURFACE2, fg=TEXT, btn_width=200, btn_height=40,
-        ).pack(side="left", padx=6)
+            btn_frame2, "\u2295  Open App",
+            command=lambda: webbrowser.open("http://localhost:5173"),
+            bg=PURPLE, fg=TEXT, btn_width=120, btn_height=36,
+        ).pack(side="left", padx=4)
 
-        # ── log header ─────────────────────────────────────────────────────
+        RoundedButton(
+            btn_frame2, "\u229e  Project Folder",
+            command=lambda: os.startfile(BASE_DIR),
+            bg=SURFACE2, fg=TEXT, btn_width=140, btn_height=36,
+        ).pack(side="left", padx=4)
+
+        # ── log header ─────────────────────────────────────────────────────────
         log_header = tk.Frame(self, bg=BG)
-        log_header.pack(fill="x", padx=16, pady=(14, 4))
-        tk.Label(log_header, text="SERVER LOG",
+        log_header.pack(fill="x", padx=16, pady=(12, 4))
+        tk.Label(log_header, text="LOG",
                  font=("Segoe UI", 8, "bold"), fg=TEXT_FAINT, bg=BG).pack(side="left")
         clear_lbl = tk.Label(log_header, text="Clear",
                              font=("Segoe UI", 8), fg=TEXT_FAINT, bg=BG, cursor="hand2")
         clear_lbl.pack(side="right")
         clear_lbl.bind("<Button-1>", lambda e: self._clear_log())
 
-        # ── log box ──────────────────────────────────────────────────────────
+        # ── log box ─────────────────────────────────────────────────────────────────
         log_outer = tk.Frame(self, bg=SURFACE, bd=0,
                              highlightthickness=1, highlightbackground=BORDER)
         log_outer.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -290,29 +341,32 @@ class App(tk.Tk):
         self.log_text.tag_config("error",   foreground=RED)
         self.log_text.tag_config("url",     foreground=BLUE)
         self.log_text.tag_config("dim",     foreground=TEXT_FAINT)
+        self.log_text.tag_config("fe",      foreground=PURPLE)
 
         self._log("CinemaList launcher ready.", "dim")
-        self._log(f"Backend path: {BACKEND_DIR}", "dim")
+        self._log(f"Backend  : {BACKEND_DIR}", "dim")
+        self._log(f"Frontend : {FRONTEND_DIR}", "dim")
+        self._log(f"npm      : {NPM_CMD}", "dim")
 
-    # ── server control ────────────────────────────────────────────────────────
-    def _start(self):
+    # ── BACKEND control ───────────────────────────────────────────────────────────
+    def _start_backend(self):
         global server_proc, server_thread
         if server_proc:
-            self._log("Server is already running.", "warn")
+            self._log("[BE] Server is already running.", "warn")
             return
         if not os.path.exists(VENV_PYTHON):
             self._log(
-                "ERROR: venv not found. "
+                "[BE] ERROR: venv not found. "
                 "Run: python -m venv venv && pip install -r requirements.txt",
                 "error",
             )
             return
 
-        self._set_status("migrating", "Applying migrations\u2026", "")
+        self._be_set_status("migrating", "Applying migrations\u2026", "")
         self.start_btn.configure_color(bg=TEXT_FAINT)
 
         def run():
-            self._log("Running alembic upgrade head\u2026", "info")
+            self._log("[BE] Running alembic upgrade head\u2026", "info")
             r = subprocess.run(
                 [VENV_ALEMBIC, "upgrade", "head"],
                 cwd=BACKEND_DIR,
@@ -323,7 +377,7 @@ class App(tk.Tk):
                 self._log(line, tag)
 
             global server_proc
-            self._log("Starting uvicorn\u2026", "info")
+            self._log("[BE] Starting uvicorn\u2026", "info")
             server_proc = subprocess.Popen(
                 [VENV_UVICORN, "app.main:app", "--reload",
                  "--host", "0.0.0.0", "--port", "8000"],
@@ -332,9 +386,9 @@ class App(tk.Tk):
                 text=True, bufsize=1,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
-            self._set_status("running", "Server is running", "http://localhost:8000/docs")
+            self._be_set_status("running", "Running", "http://localhost:8000/docs")
             self.start_btn.configure_color(bg=TEXT_FAINT)
-            self.stop_btn.configure_color(bg=RED, fg=TEXT, text="\u25a0  Stop Server")
+            self.stop_btn.configure_color(bg=RED, fg=TEXT, text="\u25a0  Stop Backend")
 
             for line in server_proc.stdout:
                 line = line.rstrip()
@@ -347,57 +401,133 @@ class App(tk.Tk):
                     else "warn" if "WARNING" in line
                     else "dim"
                 )
-                self._log(line, tag)
+                self._log(f"[BE] {line}", tag)
 
             server_proc = None
-            self._reset_to_idle()
+            self._be_reset_idle()
 
         server_thread = threading.Thread(target=run, daemon=True)
         server_thread.start()
 
-    def _stop(self):
+    def _stop_backend(self):
         global server_proc
         if not server_proc:
-            self._log("No server running.", "warn")
+            self._log("[BE] No server running.", "warn")
             return
-        self._log("Stopping server\u2026", "warn")
-        self._set_status("stopping", "Stopping\u2026", "")
-        self.stop_btn.configure_color(bg=TEXT_FAINT, fg=TEXT_FAINT, text="\u25a0  Stop Server")
-
+        self._log("[BE] Stopping server\u2026", "warn")
+        self._be_set_status("stopping", "Stopping\u2026", "")
+        self.stop_btn.configure_color(bg=TEXT_FAINT, fg=TEXT_FAINT, text="\u25a0  Stop Backend")
         proc = server_proc
         def do_kill():
             _kill_proc_tree(proc)
-            self.after(0, self._reset_to_idle)
-            self.after(0, lambda: self._log("Server stopped.", "warn"))
-
+            self.after(0, self._be_reset_idle)
+            self.after(0, lambda: self._log("[BE] Server stopped.", "warn"))
         threading.Thread(target=do_kill, daemon=True).start()
 
-    def _reset_to_idle(self):
+    def _be_reset_idle(self):
         global server_proc
         server_proc = None
-        self._set_status("idle", "Server is stopped", "")
-        self.start_btn.configure_color(bg=ACCENT, fg=BG, text="\u25b6  Start Server")
-        self.stop_btn.configure_color(bg=SURFACE2, fg=TEXT_MUTED, text="\u25a0  Stop Server")
+        self._be_set_status("idle", "Stopped", "")
+        self.start_btn.configure_color(bg=ACCENT, fg=BG, text="\u25b6  Start Backend")
+        self.stop_btn.configure_color(bg=SURFACE2, fg=TEXT_MUTED, text="\u25a0  Stop Backend")
 
+    def _be_set_status(self, dot_state, label, url):
+        self.be_dot.set(dot_state)
+        colors = {"idle": TEXT_MUTED, "running": GREEN,
+                  "stopping": RED, "migrating": ACCENT}
+        self.be_status_label.config(text=label, fg=colors.get(dot_state, TEXT_MUTED))
+        self.be_url_label.config(text=url)
+
+    # ── FRONTEND control ──────────────────────────────────────────────────────────
+    def _start_frontend(self):
+        global frontend_proc, frontend_thread
+        if frontend_proc:
+            self._log("[FE] Frontend is already running.", "warn")
+            return
+        if not os.path.exists(FRONTEND_DIR):
+            self._log(f"[FE] ERROR: frontend/ folder not found at {FRONTEND_DIR}", "error")
+            return
+        if not os.path.exists(NPM_CMD):
+            self._log(f"[FE] ERROR: npm not found at {NPM_CMD}", "error")
+            return
+
+        self._fe_set_status("starting", "Starting\u2026", "")
+        self.fe_start_btn.configure_color(bg=TEXT_FAINT)
+
+        def run():
+            global frontend_proc
+            self._log("[FE] Starting Vite dev server\u2026", "fe")
+            frontend_proc = subprocess.Popen(
+                [NPM_CMD, "run", "dev"],
+                cwd=FRONTEND_DIR,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+
+            for line in frontend_proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                # detect when Vite is ready
+                if "localhost:5173" in line or "Local:" in line:
+                    self._fe_set_status("running", "Running", "http://localhost:5173")
+                    self.fe_start_btn.configure_color(bg=TEXT_FAINT)
+                    self.fe_stop_btn.configure_color(bg=RED, fg=TEXT, text="\u25a0  Stop Frontend")
+                tag = (
+                    "error" if "error" in line.lower()
+                    else "warn" if "warn" in line.lower()
+                    else "fe"
+                )
+                self._log(f"[FE] {line}", tag)
+
+            frontend_proc = None
+            self._fe_reset_idle()
+
+        frontend_thread = threading.Thread(target=run, daemon=True)
+        frontend_thread.start()
+
+    def _stop_frontend(self):
+        global frontend_proc
+        if not frontend_proc:
+            self._log("[FE] No frontend running.", "warn")
+            return
+        self._log("[FE] Stopping frontend\u2026", "warn")
+        self._fe_set_status("stopping", "Stopping\u2026", "")
+        self.fe_stop_btn.configure_color(bg=TEXT_FAINT, fg=TEXT_FAINT, text="\u25a0  Stop Frontend")
+        proc = frontend_proc
+        def do_kill():
+            _kill_proc_tree(proc)
+            self.after(0, self._fe_reset_idle)
+            self.after(0, lambda: self._log("[FE] Frontend stopped.", "warn"))
+        threading.Thread(target=do_kill, daemon=True).start()
+
+    def _fe_reset_idle(self):
+        global frontend_proc
+        frontend_proc = None
+        self._fe_set_status("idle", "Stopped", "")
+        self.fe_start_btn.configure_color(bg=PURPLE, fg=TEXT, text="\u25b6  Start Frontend")
+        self.fe_stop_btn.configure_color(bg=SURFACE2, fg=TEXT_MUTED, text="\u25a0  Stop Frontend")
+
+    def _fe_set_status(self, dot_state, label, url):
+        self.fe_dot.set(dot_state)
+        colors = {"idle": TEXT_MUTED, "running": GREEN,
+                  "stopping": RED, "starting": PURPLE}
+        self.fe_status_label.config(text=label, fg=colors.get(dot_state, TEXT_MUTED))
+        self.fe_url_label.config(text=url)
+
+    # ── close ──────────────────────────────────────────────────────────────────────────
     def _on_close(self):
-        global server_proc
+        global server_proc, frontend_proc
         if server_proc:
-            self._log("Closing — killing server\u2026", "warn")
+            self._log("Closing — killing backend\u2026", "warn")
             _kill_proc_tree(server_proc)
+        if frontend_proc:
+            self._log("Closing — killing frontend\u2026", "warn")
+            _kill_proc_tree(frontend_proc)
         self.destroy()
 
-    # ── helpers ───────────────────────────────────────────────────────────────
-    def _set_status(self, dot_state, label, url):
-        self.dot.set(dot_state)
-        colors = {
-            "idle":      TEXT_MUTED,
-            "running":   GREEN,
-            "stopping":  RED,
-            "migrating": ACCENT,
-        }
-        self.status_label.config(text=label, fg=colors.get(dot_state, TEXT_MUTED))
-        self.url_label.config(text=url)
-
+    # ── helpers ───────────────────────────────────────────────────────────────────────
     def _log(self, msg, tag="info"):
         def _do():
             self.log_text.config(state="normal")
