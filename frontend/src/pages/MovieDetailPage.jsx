@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Grid, Image, Text, Badge, Group, Rating, Textarea, Button,
   Box, Stack, Loader, Center, ActionIcon, Divider, Switch,
-  Tooltip, Card,
+  Select, MultiSelect, Tooltip, Card,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
 import {
   IconArrowLeft, IconHeart, IconHeartFilled, IconTrash,
-  IconDeviceFloppy, IconCalendarPlus, IconEye,
+  IconDeviceFloppy, IconCalendarPlus, IconEye, IconClock,
+  IconClockOff, IconTag, IconList, IconPlus, IconX,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { api, posterUrl } from '../api/client';
@@ -31,35 +32,57 @@ export default function MovieDetailPage() {
   const [saving,  setSaving]  = useState(false);
 
   // editable fields
-  const [rating,    setRating]    = useState(0);
-  const [notes,     setNotes]     = useState('');
-  const [isFav,     setIsFav]     = useState(false);
-  const [watchDate, setWatchDate] = useState(null);
+  const [rating,       setRating]       = useState(0);
+  const [notes,        setNotes]        = useState('');
+  const [isFav,        setIsFav]        = useState(false);
+  const [isWatchlisted, setIsWatchlisted] = useState(false);
+  const [watchDate,    setWatchDate]    = useState(null);
+
+  // tags
+  const [allTags,      setAllTags]      = useState([]);   // [{id, name}]
+  const [entryTagIds,  setEntryTagIds]  = useState([]);   // [id, ...]
+
+  // lists
+  const [allLists,     setAllLists]     = useState([]);   // [{id, name}]
+  const [selectedList, setSelectedList] = useState(null); // list id string
+  const [addingToList, setAddingToList] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.getEntry(id), api.getWatches(id)])
-      .then(([e, w]) => {
-        setEntry(e);
-        setWatches(w ?? []);
-        setRating(e.rating ?? 0);
-        setNotes(e.notes ?? '');
-        // Fix bug 2: backend field is is_favorite (no 'u'), not is_favourite
-        setIsFav(e.is_favorite ?? false);
-        // Fix bug 1: backend field is first_watched_at, not watched_on
-        if (e.first_watched_at) setWatchDate(new Date(e.first_watched_at));
-      })
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.getEntry(id),
+      api.getWatches(id),
+      api.getTags(),
+      api.getLists(),
+    ]).then(([e, w, tags, lists]) => {
+      setEntry(e);
+      setWatches(Array.isArray(w) ? w : w?.items ?? []);
+      setRating(e.rating ?? 0);
+      setNotes(e.notes ?? '');
+      setIsFav(e.is_favorite ?? false);
+      setIsWatchlisted(e.is_watchlisted ?? false);
+      if (e.first_watched_at) setWatchDate(new Date(e.first_watched_at));
+
+      // Tags: allTags for the MultiSelect, entryTagIds for current selection
+      const tagList = Array.isArray(tags) ? tags : tags?.items ?? [];
+      setAllTags(tagList);
+      setEntryTagIds((e.tags ?? []).map(t => String(t.id)));
+
+      // Lists
+      const listList = Array.isArray(lists) ? lists : lists?.items ?? [];
+      setAllLists(listList);
+    }).finally(() => setLoading(false));
   }, [id]);
 
+  // ── Save core fields ──────────────────────────────────────────────────────
   async function save() {
     setSaving(true);
     try {
       const updated = await api.updateEntry(id, {
         rating,
         notes,
-        // Fix bug 1: backend EntryUpdate uses is_favorite and first_watched_at
-        is_favorite: isFav,
-        first_watched_at: watchDate ? watchDate.toISOString() : null,
+        is_favorite:       isFav,
+        is_watchlisted:    isWatchlisted,
+        first_watched_at:  watchDate ? watchDate.toISOString() : null,
       });
       setEntry(updated);
       notifications.show({ message: 'Saved!', color: 'yellow' });
@@ -70,6 +93,7 @@ export default function MovieDetailPage() {
     }
   }
 
+  // ── Watch history ─────────────────────────────────────────────────────────
   async function logRewatch() {
     try {
       const w = await api.addWatch(id, { watched_at: new Date().toISOString() });
@@ -80,10 +104,48 @@ export default function MovieDetailPage() {
     }
   }
 
+  // ── Delete entry ──────────────────────────────────────────────────────────
   async function deleteEntry() {
     if (!confirm('Remove this movie from your library?')) return;
     await api.deleteEntry(id);
     navigate('/');
+  }
+
+  // ── Tags: sync MultiSelect changes to backend ─────────────────────────────
+  async function handleTagChange(newIds) {
+    const prev = entryTagIds;
+    // optimistic update
+    setEntryTagIds(newIds);
+
+    const added   = newIds.filter(tid => !prev.includes(tid));
+    const removed = prev.filter(tid => !newIds.includes(tid));
+
+    try {
+      await Promise.all([
+        ...added.map(tid   => api.attachTag(id, tid)),
+        ...removed.map(tid => api.detachTag(id, tid)),
+      ]);
+    } catch (e) {
+      // roll back on failure
+      setEntryTagIds(prev);
+      notifications.show({ message: `Tag error: ${e.message}`, color: 'red' });
+    }
+  }
+
+  // ── Add to list ───────────────────────────────────────────────────────────
+  async function addToList() {
+    if (!selectedList) return;
+    setAddingToList(true);
+    try {
+      await api.addToList(selectedList, id);
+      const listName = allLists.find(l => String(l.id) === selectedList)?.name ?? 'list';
+      notifications.show({ message: `Added to "${listName}"`, color: 'yellow' });
+      setSelectedList(null);
+    } catch (e) {
+      notifications.show({ message: e.message, color: 'red' });
+    } finally {
+      setAddingToList(false);
+    }
   }
 
   if (loading) return <Center py={80}><Loader color="yellow" /></Center>;
@@ -91,6 +153,8 @@ export default function MovieDetailPage() {
 
   const movie  = entry.movie ?? {};
   const poster = posterUrl(movie.poster_path, 'w500');
+
+  const inputStyles = { input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } };
 
   return (
     <Box>
@@ -108,6 +172,7 @@ export default function MovieDetailPage() {
       </Group>
 
       <Grid gutter="xl">
+        {/* ── Poster ── */}
         <Grid.Col span={{ base: 12, sm: 4 }}>
           {poster ? (
             <Image src={poster} radius="lg" alt={movie.title} />
@@ -118,15 +183,16 @@ export default function MovieDetailPage() {
           )}
         </Grid.Col>
 
+        {/* ── Movie info + edit controls ── */}
         <Grid.Col span={{ base: 12, sm: 8 }}>
           <Stack gap="xs">
             <Text fw={800} size="2rem" style={{ color: '#e8e8e8', lineHeight: 1.2 }}>
               {movie.title}
             </Text>
             <Group gap="xs">
-              {movie.year && <Badge color="yellow" variant="light">{movie.year}</Badge>}
-              {movie.runtime && <Badge color="gray" variant="light">{movie.runtime} min</Badge>}
-              {movie.language && <Badge color="gray" variant="outline">{movie.language.toUpperCase()}</Badge>}
+              {movie.year     && <Badge color="yellow" variant="light">{movie.year}</Badge>}
+              {movie.runtime  && <Badge color="gray"   variant="light">{movie.runtime} min</Badge>}
+              {movie.language && <Badge color="gray"   variant="outline">{movie.language.toUpperCase()}</Badge>}
             </Group>
             {movie.overview && (
               <Text c="dimmed" size="sm" mt="xs" style={{ maxWidth: 560 }}>{movie.overview}</Text>
@@ -142,7 +208,8 @@ export default function MovieDetailPage() {
           <Divider my="lg" color="#2e2e2e" />
 
           <Stack gap="md">
-            <Group gap="lg" align="flex-start">
+            {/* Rating + Favourite + Watchlist row */}
+            <Group gap="lg" align="flex-start" wrap="wrap">
               <Box>
                 <Text size="sm" c="dimmed" mb={4}>Your rating</Text>
                 <Rating
@@ -155,17 +222,36 @@ export default function MovieDetailPage() {
                 />
                 <Text size="xs" c="dimmed" mt={2}>{rating > 0 ? `${rating} / 10` : 'Not rated'}</Text>
               </Box>
+
               <Box>
                 <Text size="sm" c="dimmed" mb={8}>Favourite</Text>
                 <Switch
                   checked={isFav}
                   onChange={e => setIsFav(e.currentTarget.checked)}
                   color="yellow"
-                  thumbIcon={isFav ? <IconHeartFilled size={10} color="#e2b04a" /> : <IconHeart size={10} />}
+                  thumbIcon={isFav
+                    ? <IconHeartFilled size={10} color="#e2b04a" />
+                    : <IconHeart size={10} />}
+                />
+              </Box>
+
+              {/* ── NEW: Watchlist toggle ── */}
+              <Box>
+                <Text size="sm" c="dimmed" mb={8}>Watchlist</Text>
+                <Switch
+                  checked={isWatchlisted}
+                  onChange={e => setIsWatchlisted(e.currentTarget.checked)}
+                  color="blue"
+                  label={isWatchlisted ? 'On watchlist' : 'Not on watchlist'}
+                  styles={{ label: { color: '#b8b8b8', fontSize: 12 } }}
+                  thumbIcon={isWatchlisted
+                    ? <IconClock size={10} color="#4dabf7" />
+                    : <IconClockOff size={10} color="#696969" />}
                 />
               </Box>
             </Group>
 
+            {/* Watch date */}
             <Box>
               <Text size="sm" c="dimmed" mb={4}>Watch date</Text>
               <DateInput
@@ -174,10 +260,11 @@ export default function MovieDetailPage() {
                 placeholder="Pick a date"
                 valueFormat="DD MMM YYYY"
                 clearable
-                styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
+                styles={inputStyles}
               />
             </Box>
 
+            {/* Notes */}
             <Box>
               <Text size="sm" c="dimmed" mb={4}>Notes / Review</Text>
               <Textarea
@@ -186,10 +273,11 @@ export default function MovieDetailPage() {
                 placeholder="What did you think?"
                 minRows={3}
                 autosize
-                styles={{ input: { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' } }}
+                styles={inputStyles}
               />
             </Box>
 
+            {/* Save + Log rewatch */}
             <Group>
               <Button
                 leftSection={<IconDeviceFloppy size={14} />}
@@ -212,15 +300,103 @@ export default function MovieDetailPage() {
         </Grid.Col>
       </Grid>
 
+      {/* ── NEW: Tags section ─────────────────────────────────────────────── */}
+      <Box mt="xl">
+        <Divider mb="md" color="#2e2e2e" />
+        <Group mb="xs" gap="xs">
+          <IconTag size={15} color="#e2b04a" />
+          <Text fw={600} style={{ color: '#e8e8e8' }}>Tags</Text>
+        </Group>
+        {allTags.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            No tags yet — create some on the{' '}
+            <Text
+              span
+              size="sm"
+              style={{ color: '#e2b04a', cursor: 'pointer', textDecoration: 'underline' }}
+              onClick={() => navigate('/tags')}
+            >
+              Tags page
+            </Text>
+            .
+          </Text>
+        ) : (
+          <MultiSelect
+            data={allTags.map(t => ({ value: String(t.id), label: t.name }))}
+            value={entryTagIds}
+            onChange={handleTagChange}
+            placeholder="Search or select tags…"
+            searchable
+            clearable
+            styles={{
+              input:   { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' },
+              dropdown: { background: '#1a1a1a', borderColor: '#2e2e2e' },
+              option:  { color: '#e8e8e8' },
+            }}
+          />
+        )}
+      </Box>
+
+      {/* ── NEW: Add to list section ──────────────────────────────────────── */}
+      <Box mt="xl">
+        <Divider mb="md" color="#2e2e2e" />
+        <Group mb="xs" gap="xs">
+          <IconList size={15} color="#e2b04a" />
+          <Text fw={600} style={{ color: '#e8e8e8' }}>Add to List</Text>
+        </Group>
+        {allLists.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            No lists yet — create one on the{' '}
+            <Text
+              span
+              size="sm"
+              style={{ color: '#e2b04a', cursor: 'pointer', textDecoration: 'underline' }}
+              onClick={() => navigate('/lists')}
+            >
+              Lists page
+            </Text>
+            .
+          </Text>
+        ) : (
+          <Group gap="sm" align="flex-end">
+            <Select
+              placeholder="Choose a list…"
+              data={allLists.map(l => ({ value: String(l.id), label: l.name }))}
+              value={selectedList}
+              onChange={setSelectedList}
+              clearable
+              style={{ flex: 1, maxWidth: 320 }}
+              styles={{
+                input:    { background: '#1a1a1a', borderColor: '#2e2e2e', color: '#e8e8e8' },
+                dropdown: { background: '#1a1a1a', borderColor: '#2e2e2e' },
+                option:   { color: '#e8e8e8' },
+              }}
+            />
+            <Button
+              leftSection={<IconPlus size={14} />}
+              color="yellow"
+              variant="light"
+              disabled={!selectedList}
+              loading={addingToList}
+              onClick={addToList}
+            >
+              Add
+            </Button>
+          </Group>
+        )}
+      </Box>
+
+      {/* ── Watch history ────────────────────────────────────────────────── */}
       {watches.length > 0 && (
         <Box mt="xl">
-          <Text fw={600} mb="sm" style={{ color: '#e8e8e8' }}>
-            <IconEye size={14} style={{ marginRight: 6 }} />Watch history
-          </Text>
+          <Divider mb="md" color="#2e2e2e" />
+          <Group mb="sm" gap="xs">
+            <IconEye size={15} color="#e2b04a" />
+            <Text fw={600} style={{ color: '#e8e8e8' }}>Watch history</Text>
+          </Group>
           <Stack gap={6}>
             {watches.map((w, i) => (
               <Group key={w.id ?? i} gap="sm">
-                {/* Fix minor bug 6: format raw ISO timestamp to readable date */}
                 <Badge color="gray" variant="outline" size="sm">
                   {fmtDate(w.watched_at)}
                 </Badge>
