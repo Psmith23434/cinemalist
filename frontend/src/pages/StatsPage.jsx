@@ -62,7 +62,7 @@ export default function StatsPage() {
           <StatCard icon={IconRepeat} label="Total rewatches" value={stats.total_rewatches ?? 0} />
         </Grid.Col>
         <Grid.Col span={{ base: 6, sm: 3 }}>
-          <StatCard icon={IconHeart}  label="Favourites"      value={stats.total_favourites ?? 0} />
+          <StatCard icon={IconHeart}  label="Favourites"      value={stats.total_favorites ?? 0} />
         </Grid.Col>
       </Grid>
 
