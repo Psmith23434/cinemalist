@@ -73,6 +73,76 @@ def _kill_proc_tree(proc):
 
 
 # ─────────────────────────────────────────────────────────────────────────────────
+class Tooltip:
+    """
+    A simple hover tooltip for any tkinter widget.
+    Shows a small dark popup after a short delay and hides it on mouse-leave.
+    """
+    DELAY_MS  = 600   # ms before tooltip appears
+    PAD_X     = 10
+    PAD_Y     = 6
+
+    def __init__(self, widget, text):
+        self._widget  = widget
+        self._text    = text
+        self._tip_win = None
+        self._after_id = None
+        widget.bind("<Enter>",  self._schedule_show, add="+")
+        widget.bind("<Leave>",  self._hide,          add="+")
+        widget.bind("<Button>", self._hide,           add="+")
+
+    def _schedule_show(self, event=None):
+        self._cancel()
+        self._after_id = self._widget.after(self.DELAY_MS, self._show)
+
+    def _cancel(self):
+        if self._after_id:
+            self._widget.after_cancel(self._after_id)
+            self._after_id = None
+
+    def _show(self):
+        if self._tip_win:
+            return
+        x = self._widget.winfo_rootx() + self._widget.winfo_width() // 2
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 6
+
+        self._tip_win = tw = tk.Toplevel(self._widget)
+        tw.wm_overrideredirect(True)          # no title bar / window chrome
+        tw.wm_attributes("-topmost", True)
+        tw.configure(bg=SURFACE2)
+
+        # outer border frame
+        border = tk.Frame(tw, bg=GOLD, padx=1, pady=1)
+        border.pack()
+
+        inner = tk.Frame(border, bg=SURFACE2)
+        inner.pack()
+
+        tk.Label(
+            inner,
+            text=self._text,
+            font=("Segoe UI", 8),
+            fg=TEXT,
+            bg=SURFACE2,
+            justify="left",
+            padx=self.PAD_X,
+            pady=self.PAD_Y,
+        ).pack()
+
+        tw.update_idletasks()
+        tip_w = tw.winfo_width()
+        # centre horizontally under the button
+        x = max(0, x - tip_w // 2)
+        tw.wm_geometry(f"+{x}+{y}")
+
+    def _hide(self, event=None):
+        self._cancel()
+        if self._tip_win:
+            self._tip_win.destroy()
+            self._tip_win = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────────
 class RoundedButton(tk.Canvas):
     def __init__(self, parent, text, command,
                  bg=ACCENT, fg=BG, btn_width=180, btn_height=42, radius=8):
@@ -236,7 +306,7 @@ class App(tk.Tk):
         # prod mode indicator
         self.prod_label = tk.Label(
             be_card,
-            text="✓ Production build ready  —  http://localhost:8000" if os.path.isfile(
+            text="\u2713 Production build ready  \u2014  http://localhost:8000" if os.path.isfile(
                 os.path.join(STATIC_DIR, "index.html")
             ) else "",
             font=("Segoe UI", 8), fg=GREEN, bg=SURFACE2,
@@ -315,6 +385,18 @@ class App(tk.Tk):
             bg=GOLD, fg=TEXT, btn_width=200, btn_height=44,
         )
         self.build_btn.pack(side="left", padx=6)
+
+        # Tooltip on the Build & Serve button
+        _BUILD_TOOLTIP = (
+            "Production mode — 3 steps:\n"
+            "\n"
+            "  1\u20e3  Click \u25b6 Build & Serve  (wait for \u2714 in log)\n"
+            "  2\u20e3  Click \u25b6 Start Backend\n"
+            "  3\u20e3  Open  http://localhost:8000\n"
+            "\n"
+            "Only rebuild when you change the UI."
+        )
+        Tooltip(self.build_btn, _BUILD_TOOLTIP)
 
         tk.Label(
             build_frame,
@@ -578,7 +660,7 @@ class App(tk.Tk):
         self.build_btn.configure_color(bg=TEXT_FAINT)
         self.be_dot.set("building")
         self._log("[BUILD] Starting npm run build\u2026", "build")
-        self._log(f"[BUILD] Output → {STATIC_DIR}", "dim")
+        self._log(f"[BUILD] Output \u2192 {STATIC_DIR}", "dim")
 
         def run():
             proc = subprocess.Popen(
@@ -595,7 +677,7 @@ class App(tk.Tk):
                     continue
                 tag = (
                     "error" if "error" in line.lower()
-                    else "warn"  if "warn"  in line.lower()
+                    else "warn"    if "warn"    in line.lower()
                     else "success" if "built in" in line.lower()
                     else "build"
                 )
@@ -607,15 +689,13 @@ class App(tk.Tk):
                 success = False
 
             if success and os.path.isfile(os.path.join(STATIC_DIR, "index.html")):
-                self._log("[BUILD] ✔ Build successful! backend/static/ is ready.", "success")
-                self._log("[BUILD] Start Backend and open http://localhost:8000", "success")
-                # Update prod label
+                self._log("[BUILD] \u2714 Build successful! backend/static/ is ready.", "success")
+                self._log("[BUILD] \u25b6 Next: click \u25b6 Start Backend, then open http://localhost:8000", "warn")
                 self.after(0, lambda: self.prod_label.config(
                     text="\u2713 Production build ready  \u2014  http://localhost:8000"
                 ))
-                self.after(0, lambda: webbrowser.open("http://localhost:8000"))
             else:
-                self._log("[BUILD] ✘ Build failed. Check log above for errors.", "error")
+                self._log("[BUILD] \u2718 Build failed. Check log above for errors.", "error")
 
             self.after(0, lambda: self.build_btn.configure_color(bg=GOLD, text="\u25b6  Build & Serve"))
             self.after(0, lambda: self.be_dot.set("idle" if not server_proc else "running"))
