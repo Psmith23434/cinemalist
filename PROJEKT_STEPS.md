@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 00:14 CEST
+> Last updated: 2026-04-06 09:40 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -33,12 +33,14 @@
 | | → `lists`, `list_items` | ✅ | |
 | | → `tmdb_cache`, `sync_log` | ✅ | |
 | 2.5 | Write Alembic migration (`0001_initial_tables.py`) | ✅ | `backend/alembic/versions/0001_initial_tables.py` |
-| 2.6 | Apply migration → `cinemalist.db` created | ⏳ | Run `alembic upgrade head` locally after `git pull` |
+| 2.6 | Apply migration → `cinemalist.db` created locally | ✅ | Applied via `launcher.py` → Start Server (runs `alembic upgrade head` automatically). `cinemalist.db` exists at `backend/cinemalist.db`. Not in repo (`.gitignore`d). |
 | 2.7 | Build `run.py` helper script | ✅ | `backend/run.py` |
-| 2.8 | Build GUI launcher (`launcher.py`) with Start/Stop/Open Docs | ✅ | `/launcher.py` (17.9 KB) |
+| 2.8 | Build GUI launcher (`launcher.py`) with Start/Stop/Open Docs | ✅ | `/launcher.py` (17.9 KB) — runs `alembic upgrade head` then starts uvicorn on port 8000 |
 | 2.9 | Add `start.bat` one-click startup script | ✅ | `/start.bat` |
 
-> **Note (2.6 — Alembic safe to re-run):** If you already ran `alembic upgrade head` before and then do `git pull`, running it again is **safe** — Alembic tracks which migrations have already been applied in the `alembic_version` table inside `cinemalist.db`. It will skip already-applied migrations and only run new ones. Your existing database and data are **never overwritten**. The command `alembic revision --autogenerate` creates a NEW file in `alembic/versions/` — it does not touch existing migration files.
+> **How to start the backend:** Run `python launcher.py` from `E:\Projects\Cine`, then click **▶ Start Server**. The launcher automatically runs `alembic upgrade head` first (safe to re-run — skips already-applied migrations), then starts uvicorn on `http://localhost:8000`. Swagger UI is available at `http://localhost:8000/docs`.
+
+> **Note (Alembic safe to re-run):** Running `alembic upgrade head` again after a `git pull` is always safe — Alembic tracks applied migrations in the `alembic_version` table inside `cinemalist.db`. It skips already-applied migrations and only runs new ones. Your existing data is never overwritten.
 
 ---
 
@@ -55,26 +57,30 @@
 | 3.7 | Build API router: `GET /api/movies/` with genre/sort/direction filters | ✅ | `backend/app/api/movies.py` (5.9 KB) |
 | 3.8 | Build CRUD for entries: `POST/GET/PUT/DELETE /api/entries/` | ✅ | `backend/app/api/entries.py` (5.0 KB) |
 | 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ | `genres.py`, `tags.py`, `lists.py`, `stats.py`, `sync.py` |
-| 3.10 | Test all endpoints in Swagger UI (`/docs`) | ⏳ | Requires local `alembic upgrade head` + `.env` with TMDb key |
+| 3.10 | Test all endpoints in Swagger UI (`/docs`) | ⏳ | Backend confirmed running at `http://localhost:8000/docs` ✅. Full smoke-test of all endpoints pending. |
 
-> **Note (3.10):** All code is present and wired in `main.py`. Manual smoke-test pending on your machine.
+> **Note (3.10):** Backend is live and Swagger UI loads correctly. Next step is to smoke-test each endpoint group (search, movies, entries, tags, lists, stats) with real TMDb API key in `.env`.
 
 ---
 
-## Phase 4 — React Frontend / UI ⏳ UP NEXT
+## Phase 4 — React Frontend / UI 🔶 IN PROGRESS
 
 | # | Task | Status |
 |---|---|---|
-| 4.1 | Set up React + Vite project in `frontend/` | 🔲 |
-| 4.2 | Install Mantine UI component library | 🔲 |
-| 4.3 | Build Movie Grid / Library page (poster cards) | 🔲 |
-| 4.4 | Build Movie Search page (live TMDb search-as-you-type) | 🔲 |
-| 4.5 | Build Movie Detail page (rating, notes, watch date) | 🔲 |
-| 4.6 | Build Statistics page (totals, avg rating, genre breakdown) | 🔲 |
-| 4.7 | Build Lists & Tags management | 🔲 |
-| 4.8 | Add dark mode toggle | 🔲 |
-| 4.9 | Configure CORS between Vite (5173) and FastAPI (8000) | 🔲 |
+| 4.1 | Set up React + Vite project in `frontend/` | ✅ |
+| 4.2 | Install Mantine UI v7 + `@mantine/dates@7` | ✅ |
+| 4.3 | Build Movie Grid / Library page (poster cards) | ✅ |
+| 4.4 | Build Movie Search page (live TMDb search-as-you-type) | ✅ |
+| 4.5 | Build Movie Detail page (rating, notes, watch date) | ✅ |
+| 4.6 | Build Statistics page (totals, avg rating, genre breakdown) | ✅ |
+| 4.7 | Build Lists & Tags management | ✅ |
+| 4.8 | Add dark mode toggle | ✅ |
+| 4.9 | Configure CORS between Vite (5173) and FastAPI (8000) | ✅ |
 | 4.10 | Build React frontend as production bundle into `backend/static/` | 🔲 |
+
+> **Current status:** Frontend running at `http://localhost:5173`. Fixed `Wrap` import crash in `TagsPage.jsx` (not a valid Mantine v7 export). All pages render. Backend not yet wired to frontend — empty states everywhere until smoke-test (3.10) is complete.
+
+> **Mantine version note:** Project uses **Mantine v7**. A future upgrade to v9 is documented in `PROJECT_PLAN.md` Section 11, to be done after Phase 5 (testing) when the app is fully working end-to-end.
 
 ---
 
@@ -164,18 +170,21 @@
 ├── PROJEKT_STEPS.md         ✅ this file
 ├── README.md                ✅
 ├── launcher.py              ✅ GUI launcher (tkinter, dark cinema theme)
+│                               Starts backend: alembic upgrade head → uvicorn :8000
 ├── start.bat                ✅ one-click CMD startup
 ├── cinemalist.html          ✅ placeholder / future static entry
 ├── sync-server.js           ✅ Node.js sync prototype (future)
 └── backend/
+    ├── .env                 ✅ local only — contains TMDB_API_KEY (not in repo)
     ├── .env.example         ✅
+    ├── cinemalist.db        ✅ local only — SQLite database (not in repo, .gitignored)
     ├── README.md            ✅
     ├── alembic.ini          ✅
     ├── requirements.txt     ✅
     ├── run.py               ✅
     ├── alembic/
     │   └── versions/
-    │       └── 0001_initial_tables.py  ✅
+    │       └── 0001_initial_tables.py  ✅ applied — all 11 tables created
     └── app/
         ├── main.py          ✅
         ├── models/          ✅ (all 11 ORM models)
@@ -202,11 +211,9 @@
         └── core/            ✅ (config, database session)
 ```
 
-> **Missing / not yet created:**
-> - `frontend/` — entire React + Vite app (Phase 4)
-> - `backend/tests/` — pytest suite (Phase 5)
-> - `backend/app/services/llm.py` — AI service (Phase 5)
-> - `cinemalist.db` — created on first `alembic upgrade head` run (local only, not in repo)
+> **Local-only files (not in repo, .gitignored):**
+> - `backend/cinemalist.db` — SQLite database, created by `alembic upgrade head` on first launcher start ✅
+> - `backend/.env` — contains `TMDB_API_KEY` and other secrets ✅
 
 ---
 
@@ -214,11 +221,11 @@
 
 ```
 Phase 1  [██████████] 100% ✅  Planning & repo setup
-Phase 2  [█████████░]  95% ✅  Backend + DB (migration done, DB apply is local step)
-Phase 3  [██████████] 100% ✅  TMDb integration complete
-Phase 4  [          ]   0% ⏳  ← YOU ARE HERE  (React frontend)
+Phase 2  [██████████] 100% ✅  Backend + DB (migration applied, cinemalist.db exists)
+Phase 3  [█████████░]  95% 🔶  TMDb integration (code done, smoke-test pending)
+Phase 4  [█████████░]  90% 🔶  React frontend (all pages built, prod bundle pending)
 Phase 5  [          ]   0% 🔲  Testing + AI
-Phase 6  [██        ]  20% 🔲  (start.bat + launcher.py done, rest needs frontend)
+Phase 6  [██        ]  20% 🔲  (start.bat + launcher.py done, rest needs frontend build)
 Phase 7  [          ]   0% 🔲  Server/VPS
 Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
 ```
