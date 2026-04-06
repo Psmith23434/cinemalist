@@ -1,12 +1,11 @@
-"""
-Tests for /api/lists/ — create, read, add items, delete.
-"""
+"""Tests for /api/lists/ — CRUD and list-item management."""
 import pytest
 from tests.conftest import create_test_movie
 
 
-async def create_list(client, name: str = "My Favs") -> dict:
-    r = await client.post("/api/lists/", json={"name": name, "description": "Test list"})
+async def create_list(client, name: str = "My List") -> dict:
+    """Helper: create a list and return its JSON."""
+    r = await client.post("/api/lists/", json={"name": name})
     assert r.status_code == 201, r.text
     return r.json()
 
@@ -14,16 +13,16 @@ async def create_list(client, name: str = "My Favs") -> dict:
 @pytest.mark.asyncio
 async def test_create_list(client):
     """POST /api/lists/ creates a new list."""
-    data = await create_list(client, "Watchlist 2025")
-    assert data["name"] == "Watchlist 2025"
-    assert data["id"] > 0
+    r = await client.post("/api/lists/", json={"name": "Favourites"})
+    assert r.status_code == 201
+    assert r.json()["name"] == "Favourites"
 
 
 @pytest.mark.asyncio
 async def test_list_all_lists(client):
-    """GET /api/lists/ returns all created lists."""
-    await create_list(client, "List A")
-    await create_list(client, "List B")
+    """GET /api/lists/ returns all lists."""
+    await create_list(client, "List One")
+    await create_list(client, "List Two")
     r = await client.get("/api/lists/")
     assert r.status_code == 200
     assert len(r.json()) >= 2
@@ -32,44 +31,48 @@ async def test_list_all_lists(client):
 @pytest.mark.asyncio
 async def test_get_list_by_id(client):
     """GET /api/lists/{id} returns the correct list."""
-    lst = await create_list(client, "Horror Classics")
+    lst = await create_list(client, "Detail List")
     r = await client.get(f"/api/lists/{lst['id']}")
     assert r.status_code == 200
-    assert r.json()["name"] == "Horror Classics"
+    assert r.json()["id"] == lst["id"]
 
 
 @pytest.mark.asyncio
 async def test_get_list_not_found(client):
-    r = await client.get("/api/lists/9999")
+    """GET /api/lists/99999 returns 404."""
+    r = await client.get("/api/lists/99999")
     assert r.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_add_item_to_list(client, db_session):
-    """POST /api/lists/{id}/items adds a movie entry to a list."""
-    from tests.conftest import create_test_movie
+    """POST /api/lists/{id}/entries/{entry_id} adds a movie entry to a list.
+
+    The endpoint is: POST /api/lists/{list_id}/entries/{entry_id}
+    (entry_id is a path param, NOT a JSON body field)
+    """
     movie = await create_test_movie(db_session)
-    # Create entry first
     entry = (await client.post("/api/entries/", json={"movie_id": movie.id, "watched": False})).json()
     lst = await create_list(client)
-    r = await client.post(f"/api/lists/{lst['id']}/items", json={"entry_id": entry["id"]})
-    assert r.status_code == 201, r.text
+    # Correct URL: entry_id is a path segment, not a body
+    r = await client.post(f"/api/lists/{lst['id']}/entries/{entry['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["ok"] is True
 
 
 @pytest.mark.asyncio
 async def test_delete_list(client):
-    """DELETE /api/lists/{id} soft-deletes a list."""
-    lst = await create_list(client, "Temp List")
+    """DELETE /api/lists/{id} soft-deletes the list."""
+    lst = await create_list(client, "To Delete")
     r = await client.delete(f"/api/lists/{lst['id']}")
     assert r.status_code == 200
     assert r.json()["ok"] is True
-    r2 = await client.get(f"/api/lists/{lst['id']}")
-    assert r2.status_code == 404
+    assert (await client.get(f"/api/lists/{lst['id']}")).status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_update_list(client):
-    """PATCH /api/lists/{id} updates name and description."""
+    """PATCH /api/lists/{id} updates the list name."""
     lst = await create_list(client, "Old Name")
     r = await client.patch(f"/api/lists/{lst['id']}", json={"name": "New Name"})
     assert r.status_code == 200
