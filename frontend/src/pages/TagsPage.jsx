@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Group, Badge, Text, TextInput, Button, Box,
-  ActionIcon, Loader, Center, Wrap,
+  ActionIcon, Loader, Center,
 } from '@mantine/core';
 import { IconTag, IconPlus, IconX } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
