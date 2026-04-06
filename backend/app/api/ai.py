@@ -27,7 +27,7 @@ from app.models.movie import Movie
 from app.models.movie_genre import MovieGenre
 from app.models.genre import Genre
 from app.services import llm as llm_service
-from app.api.stats import get_stats  # reuse existing stats endpoint logic
+from app.api.stats import stats_overview  # correct function name in stats.py
 
 router = APIRouter()
 
@@ -109,8 +109,10 @@ async def get_stats_report(
     Returns:
         {"report": str}
     """
-    stats = await get_stats(db=db)
-    report = await llm_service.stats_report(stats)
+    # stats_overview returns a Pydantic StatsOverview model — convert to dict for LLM
+    stats_model = await stats_overview(db=db)
+    stats_dict = stats_model.model_dump()
+    report = await llm_service.stats_report(stats_dict)
     return {"report": report}
 
 
