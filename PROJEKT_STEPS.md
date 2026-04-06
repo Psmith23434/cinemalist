@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 12:30 CEST
+> Last updated: 2026-04-06 13:00 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -99,20 +99,41 @@
 
 ---
 
-## Phase 5 — Testing, Polish & AI Integration ⏳ UP NEXT
+## Phase 5 — Testing, Polish & AI Integration 🔶 IN PROGRESS
 
 | # | Task | Status |
 |---|---|---|
-| 5.1 | Write `pytest` test suite for backend (`backend/tests/`) | 🔲 |
+| 5.1 | Write `pytest` test suite for backend (`backend/tests/`) | ✅ |
 | 5.2 | Add database indexes on frequently queried columns | 🔲 |
 | 5.3 | Add error handling: missing posters, API failures, duplicates | 🔲 |
-| 5.4 | Implement `app/services/llm.py` — LLM proxy connection | 🔲 |
+| 5.4 | Implement `app/services/llm.py` — LLM proxy connection | ⏳ |
 | 5.5 | Build `GET /api/ai/recommend` — personalised recommendations | 🔲 |
 | 5.6 | Build `GET /api/ai/stats-report` — narrative stats summary | 🔲 |
 | 5.7 | Build `POST /api/ai/suggest-tags` — auto-tag suggestions | 🔲 |
 | 5.8 | Build `GET /api/ai/search` — natural language library search | 🔲 |
 | 5.9 | Add LLM response caching (`llm_cache` table) | 🔲 |
 | 5.10 | Add "For You ✨" tab in React Statistics page | 🔲 |
+
+### 5.1 — Test Suite Details (Completed 2026-04-06)
+
+| File | Coverage |
+|---|---|
+| `backend/tests/conftest.py` | In-memory SQLite engine, isolated `db_session`, `AsyncClient`, `create_test_movie()` helper |
+| `backend/tests/test_movies.py` | list empty, list seeded, get by ID, 404, pagination, search by title |
+| `backend/tests/test_entries.py` | create, 404, 409, list, get, update rating/favorite/notes, delete, filters, watch events (log/list/delete) |
+| `backend/tests/test_lists.py` | create, list all, get by ID, 404, add item, delete, update |
+| `backend/tests/test_tags.py` | create, list, 409 duplicate, delete, assign to entry |
+| `backend/tests/test_stats.py` | empty stats, count, average rating, required keys |
+| `backend/tests/test_sync.py` | pull empty, pull with entries, exclude future, push creates entry |
+| `backend/pytest.ini` | `asyncio_mode = auto`, `testpaths = tests` |
+
+**How to run:**
+```bash
+cd backend
+venv\Scripts\activate        # Windows
+pip install pytest pytest-asyncio httpx aiosqlite  # if not already installed
+pytest -v
+```
 
 ---
 
@@ -184,7 +205,7 @@ Phase 1  [██████████] 100% ✅  Planning & repo setup
 Phase 2  [██████████] 100% ✅  Backend + DB
 Phase 3  [██████████] 100% ✅  TMDb integration
 Phase 4  [██████████] 100% ✅  React frontend — COMPLETE
-Phase 5  [          ]   0% ⏳  Testing + AI (up next)
+Phase 5  [█         ]  10% 🔶  Testing + AI (5.1 done, 5.4 next)
 Phase 6  [█████████ ]  90% ✅  Local deployment (README remaining)
 Phase 7  [          ]   0% 🔲  Server/VPS
 Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
@@ -194,6 +215,7 @@ Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
 
 ## ⏳ Immediate Next Steps
 
-1. **Phase 4.11 — First production build:** Open launcher → click **▶ Start Backend** → click **▶ Build & Serve** → app is live at `http://localhost:8000`.
-2. **Phase 5.1** — Write `pytest` test suite for all backend endpoints.
-3. **Phase 6.7** — Update `README.md` with full Windows setup instructions.
+1. **Run the test suite locally:** `cd backend && venv\Scripts\activate && pytest -v`
+2. **Phase 5.4** — Build `backend/app/services/llm.py` (LLM proxy: OpenAI / Gemini / Ollama).
+3. **Phase 5.5–5.8** — Build `/api/ai/` endpoints (recommendations, stats report, tag suggestions, NL search).
+4. **Phase 6.7** — Update `README.md` with full Windows setup instructions.
