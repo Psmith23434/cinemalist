@@ -13,6 +13,7 @@ import re
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR   = os.path.join(BASE_DIR, "backend")
 FRONTEND_DIR  = os.path.join(BASE_DIR, "frontend")
+STATIC_DIR    = os.path.join(BACKEND_DIR, "static")
 VENV_PYTHON   = os.path.join(BACKEND_DIR, "venv", "Scripts", "python.exe")
 VENV_ALEMBIC  = os.path.join(BACKEND_DIR, "venv", "Scripts", "alembic.exe")
 VENV_UVICORN  = os.path.join(BACKEND_DIR, "venv", "Scripts", "uvicorn.exe")
@@ -35,12 +36,14 @@ RED         = "#d16060"
 GREEN       = "#6daa55"
 BLUE        = "#5591c7"
 PURPLE      = "#a86fdf"
+GOLD        = "#c8960a"
 
 # ── state ────────────────────────────────────────────────────────────────────────────
 server_proc    = None
 server_thread  = None
 frontend_proc  = None
 frontend_thread = None
+build_thread   = None
 
 # ── ANSI stripping ────────────────────────────────────────────────────────────────────
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHF]|\x1b\[[?][0-9;]*[hl]")
@@ -139,9 +142,9 @@ class StatusDot(tk.Canvas):
             self.after_cancel(self._anim_id)
             self._anim_id = None
         colors = {"idle": TEXT_FAINT, "running": GREEN, "stopping": RED,
-                  "migrating": ACCENT, "starting": PURPLE}
+                  "migrating": ACCENT, "starting": PURPLE, "building": GOLD}
         c = colors.get(state, TEXT_FAINT)
-        if state in ("running", "migrating", "starting"):
+        if state in ("running", "migrating", "starting", "building"):
             self._pulse(c)
         else:
             self.delete("all")
@@ -176,7 +179,7 @@ class App(tk.Tk):
         self.update_idletasks()
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
-        w, h = 520, 700
+        w, h = 520, 760
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
     def _build_ui(self):
@@ -230,11 +233,23 @@ class App(tk.Tk):
         self.be_url_label.bind("<Button-1>",
                                lambda e: webbrowser.open("http://localhost:8000/docs"))
 
+        # prod mode indicator
+        self.prod_label = tk.Label(
+            be_card,
+            text="✓ Production build ready  —  http://localhost:8000" if os.path.isfile(
+                os.path.join(STATIC_DIR, "index.html")
+            ) else "",
+            font=("Segoe UI", 8), fg=GREEN, bg=SURFACE2,
+        )
+        self.prod_label.pack(pady=(0, 4))
+        self.prod_label.bind("<Button-1>",
+                             lambda e: webbrowser.open("http://localhost:8000"))
+
         # ── FRONTEND status card ──────────────────────────────────────────────
         fe_card = tk.Frame(self, bg=SURFACE2, pady=12)
         fe_card.pack(fill="x", padx=16, pady=(8, 0))
 
-        tk.Label(fe_card, text="FRONTEND",
+        tk.Label(fe_card, text="FRONTEND  (dev server)",
                  font=("Segoe UI", 7, "bold"), fg=TEXT_FAINT,
                  bg=SURFACE2).pack(anchor="w", padx=16)
 
@@ -290,6 +305,23 @@ class App(tk.Tk):
         )
         self.fe_stop_btn.pack(side="left", padx=6)
 
+        # ── BUILD button (production mode) ─────────────────────────────────────
+        build_frame = tk.Frame(self, bg=BG)
+        build_frame.pack(pady=(8, 0))
+
+        self.build_btn = RoundedButton(
+            build_frame, "\u25b6  Build & Serve",
+            command=self._build_production,
+            bg=GOLD, fg=TEXT, btn_width=200, btn_height=44,
+        )
+        self.build_btn.pack(side="left", padx=6)
+
+        tk.Label(
+            build_frame,
+            text="Builds React \u2192 backend/static/\nthen serves at :8000",
+            font=("Segoe UI", 7), fg=TEXT_FAINT, bg=BG, justify="left",
+        ).pack(side="left", padx=4)
+
         # ── secondary buttons ───────────────────────────────────────────────────
         btn_frame2 = tk.Frame(self, bg=BG)
         btn_frame2.pack(pady=(8, 0))
@@ -302,7 +334,11 @@ class App(tk.Tk):
 
         RoundedButton(
             btn_frame2, "\u2295  Open App",
-            command=lambda: webbrowser.open("http://localhost:5173"),
+            command=lambda: webbrowser.open(
+                "http://localhost:8000" if os.path.isfile(
+                    os.path.join(STATIC_DIR, "index.html")
+                ) else "http://localhost:5173"
+            ),
             bg=PURPLE, fg=TEXT, btn_width=120, btn_height=36,
         ).pack(side="left", padx=4)
 
@@ -350,11 +386,16 @@ class App(tk.Tk):
         self.log_text.tag_config("url",     foreground=BLUE)
         self.log_text.tag_config("dim",     foreground=TEXT_FAINT)
         self.log_text.tag_config("fe",      foreground=PURPLE)
+        self.log_text.tag_config("build",   foreground=GOLD)
 
         self._log("CinemaList launcher ready.", "dim")
         self._log(f"Backend  : {BACKEND_DIR}", "dim")
         self._log(f"Frontend : {FRONTEND_DIR}", "dim")
         self._log(f"npm      : {NPM_CMD}", "dim")
+        if os.path.isfile(os.path.join(STATIC_DIR, "index.html")):
+            self._log("\u2713 Production build found in backend/static/", "success")
+        else:
+            self._log("No production build yet — click Build & Serve to create one.", "dim")
 
     # ── BACKEND control ───────────────────────────────────────────────────────────
     def _start_backend(self):
@@ -478,7 +519,6 @@ class App(tk.Tk):
                 line = strip_ansi(line.rstrip())
                 if not line:
                     continue
-                # detect when Vite is ready
                 if "localhost:5173" in line or "Local:" in line:
                     self._fe_set_status("running", "Running", "http://localhost:5173")
                     self.fe_start_btn.configure_color(bg=TEXT_FAINT)
@@ -524,6 +564,64 @@ class App(tk.Tk):
                   "stopping": RED, "starting": PURPLE}
         self.fe_status_label.config(text=label, fg=colors.get(dot_state, TEXT_MUTED))
         self.fe_url_label.config(text=url)
+
+    # ── PRODUCTION BUILD ──────────────────────────────────────────────────────────
+    def _build_production(self):
+        global build_thread
+        if build_thread and build_thread.is_alive():
+            self._log("[BUILD] Build already in progress.", "warn")
+            return
+        if not os.path.exists(NPM_CMD):
+            self._log(f"[BUILD] ERROR: npm not found at {NPM_CMD}", "error")
+            return
+
+        self.build_btn.configure_color(bg=TEXT_FAINT)
+        self.be_dot.set("building")
+        self._log("[BUILD] Starting npm run build\u2026", "build")
+        self._log(f"[BUILD] Output → {STATIC_DIR}", "dim")
+
+        def run():
+            proc = subprocess.Popen(
+                [NPM_CMD, "run", "build"],
+                cwd=FRONTEND_DIR,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            success = True
+            for line in proc.stdout:
+                line = strip_ansi(line.rstrip())
+                if not line:
+                    continue
+                tag = (
+                    "error" if "error" in line.lower()
+                    else "warn"  if "warn"  in line.lower()
+                    else "success" if "built in" in line.lower()
+                    else "build"
+                )
+                if "error" in line.lower():
+                    success = False
+                self._log(f"[BUILD] {line}", tag)
+            proc.wait()
+            if proc.returncode != 0:
+                success = False
+
+            if success and os.path.isfile(os.path.join(STATIC_DIR, "index.html")):
+                self._log("[BUILD] ✔ Build successful! backend/static/ is ready.", "success")
+                self._log("[BUILD] Start Backend and open http://localhost:8000", "success")
+                # Update prod label
+                self.after(0, lambda: self.prod_label.config(
+                    text="\u2713 Production build ready  \u2014  http://localhost:8000"
+                ))
+                self.after(0, lambda: webbrowser.open("http://localhost:8000"))
+            else:
+                self._log("[BUILD] ✘ Build failed. Check log above for errors.", "error")
+
+            self.after(0, lambda: self.build_btn.configure_color(bg=GOLD, text="\u25b6  Build & Serve"))
+            self.after(0, lambda: self.be_dot.set("idle" if not server_proc else "running"))
+
+        build_thread = threading.Thread(target=run, daemon=True)
+        build_thread.start()
 
     # ── close ──────────────────────────────────────────────────────────────────────────
     def _on_close(self):

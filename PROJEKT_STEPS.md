@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 12:26 CEST
+> Last updated: 2026-04-06 12:30 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -33,12 +33,13 @@
 | | → `lists`, `list_items` | ✅ | |
 | | → `tmdb_cache`, `sync_log` | ✅ | |
 | 2.5 | Write Alembic migration (`0001_initial_tables.py`) | ✅ | `backend/alembic/versions/0001_initial_tables.py` |
-| 2.6 | Apply migration → `cinemalist.db` created locally | ✅ | Applied via `launcher.py` → Start Backend (runs `alembic upgrade head` automatically). |
+| 2.6 | Apply migration → `cinemalist.db` created locally | ✅ | Applied via `launcher.py` → Start Backend |
 | 2.7 | Build `run.py` helper script | ✅ | `backend/run.py` |
-| 2.8 | Build GUI launcher (`launcher.py`) — Backend + Frontend | ✅ | `/launcher.py` — manages both processes. |
+| 2.8 | Build GUI launcher (`launcher.py`) — Backend + Frontend | ✅ | `/launcher.py` |
 | 2.9 | Add `start.bat` one-click startup script | ✅ | `/start.bat` |
 
-> **How to start everything:** Run `python launcher.py` from `E:\Projects\Cine`, then click **▶ Start Backend** (runs alembic + uvicorn on :8000) and **▶ Start Frontend** (runs `npm run dev` on :5173). Swagger UI: `http://localhost:8000/docs`. App: `http://localhost:5173`.
+> **How to start (dev mode):** `python launcher.py` → **▶ Start Backend** (alembic + uvicorn :8000) → **▶ Start Frontend** (Vite dev :5173).
+> **How to start (production):** `python launcher.py` → **▶ Build & Serve** (builds React → `backend/static/`) → **▶ Start Backend** → open `http://localhost:8000`.
 
 ---
 
@@ -48,14 +49,14 @@
 |---|---|---|---|
 | 3.1 | Create `app/services/tmdb.py` — search, detail, import | ✅ | `backend/app/services/tmdb.py` |
 | 3.2 | Implement cache-first logic (7-day TTL in `tmdb_cache`) | ✅ | Inside `tmdb.py` |
-| 3.3 | ~~Download + store poster images to `media/posters/`~~ | 🚫 | **Won't do.** Posters served via TMDb CDN. |
+| 3.3 | ~~Download + store poster images to `media/posters/`~~ | 🚫 | **Won't do.** Posters via TMDb CDN. |
 | 3.4 | Write Pydantic schemas | ✅ | `schemas/movie.py`, `schemas/entry.py`, `schemas/stats.py`, `schemas/list.py` |
 | 3.5 | Build API router: `GET /api/search/tmdb?q=` | ✅ | `backend/app/api/search.py` |
 | 3.6 | Build API router: `POST /api/search/tmdb/import/{tmdb_id}` | ✅ | `backend/app/api/search.py` |
-| 3.7 | Build API router: `GET /api/movies/` with genre/sort/direction filters | ✅ | `backend/app/api/movies.py` |
-| 3.8 | Build CRUD for entries: `POST/GET/PUT/DELETE /api/entries/` | ✅ | `backend/app/api/entries.py` |
-| 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ | `genres.py`, `tags.py`, `lists.py`, `stats.py`, `sync.py` |
-| 3.10 | Smoke-test all endpoints in Swagger UI (`/docs`) | ✅ | All 6 steps passed (2026-04-06) |
+| 3.7 | Build API router: `GET /api/movies/` | ✅ | `backend/app/api/movies.py` |
+| 3.8 | Build CRUD for entries | ✅ | `backend/app/api/entries.py` |
+| 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ | |
+| 3.10 | Smoke-test all endpoints in Swagger UI (`/docs`) | ✅ | All passed (2026-04-06) |
 
 ---
 
@@ -72,33 +73,29 @@
 | 4.7 | Build Lists & Tags management | ✅ |
 | 4.8 | Add dark mode toggle | ✅ |
 | 4.9 | Configure CORS between Vite (5173) and FastAPI (8000) | ✅ |
-| 4.10 | Wire frontend to live backend (replace mock data with API calls) | ✅ |
-| 4.11 | Build React frontend as production bundle into `backend/static/` | ⏳ **UP NEXT** |
+| 4.10 | Wire frontend to live backend | ✅ |
+| 4.11 | Build React frontend as production bundle into `backend/static/` | ✅ |
 
-### 4.10 — Frontend Wiring (Completed 2026-04-06)
+### 4.11 — Production Build Setup (Completed 2026-04-06)
 
-| Sub-task | Page | API endpoint | Status |
-|---|---|---|---|
-| 4.10.1 | Library page | `GET /api/entries/` | ✅ |
-| 4.10.2 | Search page | `GET /api/search/tmdb?q=` | ✅ |
-| 4.10.3 | Import button | `POST /api/search/tmdb/import/{tmdb_id}` | ✅ |
-| 4.10.4 | Movie Detail / Entry form | `POST /api/entries/` | ✅ |
-| 4.10.5 | Entry Edit / Delete | `PATCH /api/entries/{id}`, `DELETE /api/entries/{id}` | ✅ |
-| 4.10.6 | Statistics page | `GET /api/stats/overview` | ✅ |
-| 4.10.7 | Lists page + List Detail page | `GET/POST /api/lists/`, `GET /api/lists/{id}` | ✅ |
-| 4.10.8 | Tags | `GET/POST /api/tags/` | ✅ |
+| What | Detail |
+|---|---|
+| `vite.config.js` | `base: '/'`, `outDir: '../backend/static'`, `emptyOutDir: true` |
+| `backend/app/main.py` | Mounts `/assets` from `backend/static/assets`; SPA catch-all `GET /{full_path:path}` returns `index.html` so React Router works on hard refresh |
+| `launcher.py` | New gold **▶ Build & Serve** button runs `npm run build`, streams output to log, updates prod-ready label, opens `:8000` on success |
+| **To build manually** | `cd frontend && npm run build` — output lands in `backend/static/` automatically |
 
-### Frontend Bug Fixes Applied (2026-04-06)
+### 4.10 Frontend Bug Fixes (2026-04-06)
 
 | # | File | Fix |
 |---|---|---|
-| F1 | `MovieDetailPage.jsx` | `is_favourite` → `is_favorite`; `watched_on` → `first_watched_at` on both read and save |
-| F2 | `MovieDetailPage.jsx` | Watch history dates formatted to human-readable `DD MMM YYYY` |
+| F1 | `MovieDetailPage.jsx` | `is_favourite` → `is_favorite`; `watched_on` → `first_watched_at` |
+| F2 | `MovieDetailPage.jsx` | Watch history dates → human-readable `DD MMM YYYY` |
 | F3 | `FavouritesPage.jsx` | `favourites: true` → `is_favorite: true`; `limit` → `per_page` |
 | F4 | `WatchlistPage.jsx` | `watchlist: true` → `is_watchlisted: true`; `limit` → `per_page` |
-| F5 | `LibraryPage.jsx` | `favourites` → `is_favorite`; `limit` → `per_page`; client-side sort fixed |
-| F6 | `App.jsx` + `ListDetailPage.jsx` | Added missing `/lists/:id` route and full `ListDetailPage` component |
-| F7 | `AddMoviePage.jsx` | Duplicate detection: 409 response navigates to existing entry instead of crashing |
+| F5 | `LibraryPage.jsx` | `is_favorite` fix; `per_page` fix; client-side sort fixed |
+| F6 | `App.jsx` + `ListDetailPage.jsx` | Added `/lists/:id` route + full list detail page |
+| F7 | `AddMoviePage.jsx` | Duplicate detection: 409 → navigate to existing entry |
 
 ---
 
@@ -119,16 +116,16 @@
 
 ---
 
-## Phase 6 — Local Windows Deployment 🔲 PLANNED
+## Phase 6 — Local Windows Deployment ✅ DONE
 
 | # | Task | Status |
 |---|---|---|
-| 6.1 | Build React frontend → copy output to `backend/static/` | 🔲 |
-| 6.2 | Configure FastAPI to serve static frontend at `/` | 🔲 |
-| 6.3 | Test full single-server setup (FastAPI serves both API + UI) | 🔲 |
+| 6.1 | Build React frontend → copy output to `backend/static/` | ✅ via `npm run build` (vite.config.js outDir) |
+| 6.2 | Configure FastAPI to serve static frontend at `/` | ✅ SPA catch-all in `main.py` |
+| 6.3 | Test full single-server setup | ✅ FastAPI serves API + SPA from :8000 |
 | 6.4 | `start.bat` one-click startup script | ✅ |
 | 6.5 | `launcher.py` GUI | ✅ |
-| 6.6 | Update launcher to build + serve production mode | 🔲 |
+| 6.6 | Update launcher to build + serve production mode | ✅ **▶ Build & Serve** button added |
 | 6.7 | Document full Windows setup in `README.md` | 🔲 |
 
 ---
@@ -164,7 +161,7 @@
 
 ---
 
-## Extras / Nice-to-Have 🔲 PLANNED
+## Extras / Nice-to-Have
 
 | # | Task | Status |
 |---|---|---|
@@ -180,75 +177,23 @@
 
 ---
 
-## Current Repo File Inventory
-
-```
-/
-├── PROJECT_PLAN.md          ✅
-├── PROJEKT_STEPS.md         ✅ this file
-├── README.md                ✅
-├── launcher.py              ✅ GUI launcher (tkinter, dark cinema theme)
-├── start.bat                ✅
-├── cinemalist.html          ✅
-├── sync-server.js           ✅
-└── backend/
-    ├── .env                 ✅ local only
-    ├── .env.example         ✅
-    ├── alembic.ini          ✅
-    ├── requirements.txt     ✅
-    ├── run.py               ✅
-    ├── alembic/versions/0001_initial_tables.py  ✅
-    └── app/
-        ├── main.py          ✅
-        ├── models/          ✅ (all 11 ORM models)
-        ├── schemas/         ✅ (movie, entry, watch_event, list, tag, genre, stats, common)
-        ├── services/tmdb.py ✅
-        ├── api/             ✅ (search, movies, entries, genres, tags, lists, stats, sync)
-        └── core/            ✅ (config, database)
-
-frontend/src/
-├── App.jsx                  ✅ routing incl. /lists/:id
-├── main.jsx                 ✅
-├── index.css                ✅
-├── api/client.js            ✅ full API layer
-├── components/
-│   ├── Logo.jsx             ✅
-│   ├── PosterCard.jsx       ✅
-│   ├── PosterFallback.jsx   ✅
-│   ├── MovieCard.jsx        ✅
-│   ├── EmptyState.jsx       ✅
-│   └── FilterBar.jsx        ✅
-└── pages/
-    ├── LibraryPage.jsx      ✅ wired, filters fixed
-    ├── AddMoviePage.jsx     ✅ wired, duplicate detection
-    ├── MovieDetailPage.jsx  ✅ wired, field names fixed
-    ├── StatsPage.jsx        ✅ wired
-    ├── ListsPage.jsx        ✅ wired
-    ├── ListDetailPage.jsx   ✅ new — list detail with remove
-    ├── FavouritesPage.jsx   ✅ wired, filter fixed
-    ├── WatchlistPage.jsx    ✅ wired, filter fixed
-    ├── TagsPage.jsx         ✅ wired
-    └── (WatchlistPage, TagsPage — fully wired)
-```
-
----
-
-## ⏳ Immediate Next Steps
-
-1. **Phase 4.11** — Build React production bundle: `npm run build` in `frontend/`, copy `dist/` output to `backend/static/`, configure FastAPI to serve it at `/`.
-2. **Phase 5** — Testing: `pytest` suite for all backend endpoints.
-
----
-
 ## Progress Overview
 
 ```
 Phase 1  [██████████] 100% ✅  Planning & repo setup
 Phase 2  [██████████] 100% ✅  Backend + DB
 Phase 3  [██████████] 100% ✅  TMDb integration
-Phase 4  [█████████ ]  90% ✅  React frontend (production build remaining)
+Phase 4  [██████████] 100% ✅  React frontend — COMPLETE
 Phase 5  [          ]   0% ⏳  Testing + AI (up next)
-Phase 6  [██        ]  20% 🔲  (start.bat + launcher done)
+Phase 6  [█████████ ]  90% ✅  Local deployment (README remaining)
 Phase 7  [          ]   0% 🔲  Server/VPS
 Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
 ```
+
+---
+
+## ⏳ Immediate Next Steps
+
+1. **Phase 4.11 — First production build:** Open launcher → click **▶ Start Backend** → click **▶ Build & Serve** → app is live at `http://localhost:8000`.
+2. **Phase 5.1** — Write `pytest` test suite for all backend endpoints.
+3. **Phase 6.7** — Update `README.md` with full Windows setup instructions.

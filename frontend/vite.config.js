@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // Base path — must be '/' so all asset references in index.html are absolute.
+  // FastAPI mounts /assets from backend/static/assets, so this aligns perfectly.
+  base: '/',
   server: {
     port: 5173,
     proxy: {
@@ -17,6 +20,8 @@ export default defineConfig({
     },
   },
   build: {
+    // Output goes directly into backend/static/ so FastAPI can serve it.
+    // 'emptyOutDir: true' clears stale assets on each build.
     outDir: '../backend/static',
     emptyOutDir: true,
   },
