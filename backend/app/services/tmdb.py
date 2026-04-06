@@ -7,9 +7,16 @@ the API on repeated lookups.
 
 Public helpers
 --------------
-  search_movies(q, page, db)          → raw TMDb /search/movie response
-  get_movie_details(tmdb_id, db)      → raw TMDb /movie/{id}?append_to_response=credits
-  import_movie(tmdb_id, db)           → upsert Movie + Genre rows, return Movie ORM object
+  search_movies(q, page, db, lang)        → raw TMDb /search/movie response
+  get_movie_details(tmdb_id, db, lang)    → raw TMDb /movie/{id}?append_to_response=credits
+  import_movie(tmdb_id, db, lang)         → upsert Movie + Genre rows, return Movie ORM object
+
+Language
+--------
+  All helpers accept an optional `lang` parameter (BCP-47, e.g. "de-DE" or "en-US").
+  Default is "de-DE" so the app is German out of the box.
+  The lang value is included in the cache key, so DE and EN results are cached
+  independently — no cross-contamination.
 """
 
 from __future__ import annotations
@@ -30,12 +37,17 @@ from app.models.movie_genre import MovieGenre
 from app.models.tmdb_cache import TmdbCache
 
 CACHE_TTL_DAYS = 7
+DEFAULT_LANG = "de-DE"
 
 
 # ── Low-level cached HTTP helper ──────────────────────────────────────────────
 
 async def _tmdb_get(path: str, params: dict[str, Any], db: AsyncSession) -> dict:
-    """GET a TMDb endpoint, returning cached JSON when fresh."""
+    """GET a TMDb endpoint, returning cached JSON when fresh.
+
+    The cache key is built from the path + all params (including `language`),
+    so different language requests are cached separately.
+    """
     cache_key = path + "::" + json.dumps(params, sort_keys=True)
 
     row: TmdbCache | None = (
@@ -77,27 +89,43 @@ async def _tmdb_get(path: str, params: dict[str, Any], db: AsyncSession) -> dict
 
 # ── Public search / detail helpers ───────────────────────────────────────────
 
-async def search_movies(q: str, page: int, db: AsyncSession) -> dict:
-    """Search TMDb by title. Returns the raw TMDb response dict."""
+async def search_movies(q: str, page: int, db: AsyncSession, lang: str = DEFAULT_LANG) -> dict:
+    """Search TMDb by title.
+
+    Returns the raw TMDb response dict.
+    `lang` defaults to 'de-DE' so German titles and overviews are returned.
+    TMDb falls back to English automatically when no German data exists.
+    """
     return await _tmdb_get(
         "/search/movie",
-        {"query": q, "page": page, "include_adult": "false"},
+        {
+            "query": q,
+            "page": page,
+            "include_adult": "false",
+            "language": lang,
+        },
         db,
     )
 
 
-async def get_movie_details(tmdb_id: int, db: AsyncSession) -> dict:
-    """Fetch full movie details + credits from TMDb."""
+async def get_movie_details(tmdb_id: int, db: AsyncSession, lang: str = DEFAULT_LANG) -> dict:
+    """Fetch full movie details + credits from TMDb.
+
+    `lang` defaults to 'de-DE' so the overview/tagline come back in German.
+    """
     return await _tmdb_get(
         f"/movie/{tmdb_id}",
-        {"append_to_response": "credits"},
+        {
+            "append_to_response": "credits",
+            "language": lang,
+        },
         db,
     )
 
 
 # ── Import helper ─────────────────────────────────────────────────────────────
 
-async def import_movie(tmdb_id: int, db: AsyncSession) -> Movie:
+async def import_movie(tmdb_id: int, db: AsyncSession, lang: str = DEFAULT_LANG) -> Movie:
     """
     Fetch full TMDb details for *tmdb_id* and upsert into the local DB.
 
@@ -109,8 +137,11 @@ async def import_movie(tmdb_id: int, db: AsyncSession) -> Movie:
     4. Upsert the Movie row.
     5. Upsert Genre rows and link via MovieGenre join table.
     6. Return the Movie ORM object (not yet committed — caller must commit).
+
+    `lang` is forwarded to get_movie_details so the stored overview is in
+    the requested language (default de-DE).
     """
-    data = await get_movie_details(tmdb_id, db)
+    data = await get_movie_details(tmdb_id, db, lang=lang)
 
     # ── Parse director ──────────────────────────────────────────────────────
     director: str | None = None

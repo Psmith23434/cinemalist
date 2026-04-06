@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 13:00 CEST
+> Last updated: 2026-04-06 13:20 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -182,6 +182,52 @@ pytest -v
 
 ---
 
+## Phase 9 — German / Multilingual Support 🔶 IN PROGRESS
+
+> Goal: German-first experience — UI in German by default, movie data (titles, overviews, genres) in German from TMDb, with a toggle to switch to English.
+
+### Overview — What TMDb Supports
+
+- TMDb fully supports `language=de-DE` on all API calls.
+- German titles, overviews, and taglines are returned when available.
+- TMDb automatically falls back to English when no German translation exists — no empty fields.
+- Searching by German title (e.g. "Der Pate", "Das Schweigen der Lämmer") works correctly with `language=de-DE`.
+- Genre names also come back localised ("Krimi", "Thriller", "Drama").
+
+### Backend Tasks
+
+| # | Task | Status | File |
+|---|---|---|---|
+| 9.1 | Add `language` param (default `de-DE`) to `search_movies()` | ✅ | `backend/app/services/tmdb.py` |
+| 9.2 | Add `language` param (default `de-DE`) to `get_movie_details()` | ✅ | `backend/app/services/tmdb.py` |
+| 9.3 | Add `language` param (default `de-DE`) to `import_movie()` | ✅ | `backend/app/services/tmdb.py` |
+| 9.4 | Expose `lang` query param on `GET /api/search/tmdb` | ✅ | `backend/app/api/search.py` |
+| 9.5 | Expose `lang` query param on `POST /api/search/tmdb/import/{id}` | ✅ | `backend/app/api/search.py` |
+| 9.6 | Refactor `search.py` import endpoint to use service layer (removes duplicate code + auth inconsistency) | ✅ | `backend/app/api/search.py` |
+| 9.7 | (Future) Add `overview_de` + `overview_en` columns to `movies` table | 🔲 | Alembic migration needed |
+| 9.8 | (Future) Store both language overviews when importing | 🔲 | `tmdb.py` + `movie.py` |
+
+### Frontend Tasks
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 9.9 | Install `react-i18next` + `i18next` | 🔲 | `npm install react-i18next i18next` |
+| 9.10 | Create translation files `frontend/src/i18n/de.json` + `en.json` | 🔲 | All UI strings (nav, buttons, labels, empty states) |
+| 9.11 | Init i18n in `main.jsx` — default locale `de`, fallback `en` | 🔲 | |
+| 9.12 | Replace all hardcoded UI strings with `t('key')` calls | 🔲 | Across all pages |
+| 9.13 | Add DE 🇩🇪 / EN 🇬🇧 language toggle in header/navbar | 🔲 | Persisted in `localStorage` |
+| 9.14 | Wire language toggle → pass `lang=de-DE` or `lang=en-US` to all TMDb API calls | 🔲 | `AddMoviePage.jsx` search + import |
+| 9.15 | (Future) UI toggle to re-fetch overview in alternate language | 🔲 | Requires 9.7/9.8 dual-overview storage |
+
+### How the Cache Works With Languages
+
+The `tmdb_cache` cache key includes all API params, including `language`. This means:
+- A `de-DE` search for "Inception" and an `en-US` search for "Inception" are stored as **separate cache entries**.
+- No cross-contamination between languages.
+- Both are subject to the 7-day TTL independently.
+
+---
+
 ## Extras / Nice-to-Have
 
 | # | Task | Status |
@@ -209,6 +255,7 @@ Phase 5  [█         ]  10% 🔶  Testing + AI (5.1 done, 5.4 next)
 Phase 6  [█████████ ]  90% ✅  Local deployment (README remaining)
 Phase 7  [          ]   0% 🔲  Server/VPS
 Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
+Phase 9  [████      ]  40% 🔶  German i18n (backend done, frontend pending)
 ```
 
 ---
@@ -216,6 +263,7 @@ Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
 ## ⏳ Immediate Next Steps
 
 1. **Run the test suite locally:** `cd backend && venv\Scripts\activate && pytest -v`
-2. **Phase 5.4** — Build `backend/app/services/llm.py` (LLM proxy: OpenAI / Gemini / Ollama).
-3. **Phase 5.5–5.8** — Build `/api/ai/` endpoints (recommendations, stats report, tag suggestions, NL search).
-4. **Phase 6.7** — Update `README.md` with full Windows setup instructions.
+2. **Phase 9.9–9.14** — Add `react-i18next` to frontend + DE/EN language toggle in header.
+3. **Phase 5.4** — Build `backend/app/services/llm.py` (LLM proxy: OpenAI / Gemini / Ollama).
+4. **Phase 5.5–5.8** — Build `/api/ai/` endpoints (recommendations, stats report, tag suggestions, NL search).
+5. **Phase 6.7** — Update `README.md` with full Windows setup instructions.
