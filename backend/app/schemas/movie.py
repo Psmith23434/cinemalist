@@ -1,6 +1,6 @@
 from __future__ import annotations
-from pydantic import BaseModel, HttpUrl
-from typing import Optional, List
+from pydantic import BaseModel, field_validator
+from typing import Optional, List, Any
 from datetime import datetime
 from .genre import GenreRead
 
@@ -52,3 +52,19 @@ class MovieRead(MovieBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("genres", mode="before")
+    @classmethod
+    def unwrap_movie_genres(cls, v: Any) -> Any:
+        """Movie.genres is a list of MovieGenre join objects.
+        Unwrap each to its .genre attribute so Pydantic gets a Genre object."""
+        if not v:
+            return []
+        result = []
+        for item in v:
+            # If it's a MovieGenre join object, extract the Genre
+            if hasattr(item, "genre"):
+                result.append(item.genre)
+            else:
+                result.append(item)
+        return result
