@@ -51,16 +51,19 @@ async def stats_overview(db: AsyncSession = Depends(get_db)):
     )
     top_genres = [GenreStat(genre=row.name, count=row.cnt) for row in genre_rows]
 
-    # By year watched (using first_watched_at)
+    # By year watched — Bug 8 fix: func.extract works on both SQLite and PostgreSQL.
+    # func.strftime("%Y", ...) was SQLite-only and would break on Phase 7 PostgreSQL migration.
+    # func.extract returns a float on SQLite (e.g. 2026.0), cast to int before use.
+    year_expr = func.extract("year", Entry.first_watched_at)
     year_rows = await db.execute(
         select(
-            func.strftime("%Y", Entry.first_watched_at).label("yr"),
+            year_expr.label("yr"),
             func.count(Entry.id).label("cnt"),
             func.avg(Entry.rating).label("avg"),
         )
         .where(Entry.watched == True, Entry.deleted_at.is_(None), Entry.first_watched_at.isnot(None))
-        .group_by(func.strftime("%Y", Entry.first_watched_at))
-        .order_by(func.strftime("%Y", Entry.first_watched_at))
+        .group_by(year_expr)
+        .order_by(year_expr)
     )
     by_year = [
         YearStat(year=int(row.yr), count=row.cnt, avg_rating=round(row.avg, 2) if row.avg else None)
