@@ -1,4 +1,4 @@
-from sqlalchemy import String, Integer, Float, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Float, Text, Boolean, DateTime, ForeignKey, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -37,5 +37,12 @@ class Entry(Base):
     # Relationships
     movie: Mapped["Movie"] = relationship(back_populates="entries")
     watch_events: Mapped[list["WatchEvent"]] = relationship(back_populates="entry", cascade="all, delete-orphan")
-    tags: Mapped[list["EntryTag"]] = relationship(back_populates="entry", cascade="all, delete-orphan")
     list_items: Mapped[list["ListItem"]] = relationship(back_populates="entry", cascade="all, delete-orphan")
+
+    # Many-to-many via secondary= (join table has no extra columns)
+    # entry.tags gives list[Tag] directly — assign Tag objects, not EntryTag rows.
+    tags: Mapped[list["Tag"]] = relationship(
+        "Tag",
+        secondary="entry_tags",
+        back_populates="entries",
+    )

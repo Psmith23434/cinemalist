@@ -9,4 +9,9 @@ class Tag(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
 
-    entries: Mapped[list["EntryTag"]] = relationship(back_populates="tag")
+    # Many-to-many back-reference — gives list[Entry] directly
+    entries: Mapped[list["Entry"]] = relationship(
+        "Entry",
+        secondary="entry_tags",
+        back_populates="tags",
+    )
