@@ -25,8 +25,28 @@ class MovieBase(BaseModel):
 
 
 class MovieCreate(MovieBase):
-    """Used when manually creating a movie or importing from TMDb."""
+    """Used when manually creating a movie. title is required (inherited from MovieBase)."""
     pass
+
+
+class MovieUpdate(BaseModel):
+    """All fields optional — used for PATCH /movies/{id}."""
+    title: Optional[str] = None
+    original_title: Optional[str] = None
+    year: Optional[int] = None
+    overview: Optional[str] = None
+    tagline: Optional[str] = None
+    runtime: Optional[int] = None
+    language: Optional[str] = None
+    status: Optional[str] = None
+    tmdb_id: Optional[int] = None
+    imdb_id: Optional[str] = None
+    tmdb_rating: Optional[float] = None
+    tmdb_vote_count: Optional[int] = None
+    poster_path: Optional[str] = None
+    backdrop_path: Optional[str] = None
+    director: Optional[str] = None
+    cast_top5: Optional[str] = None
 
 
 class MovieSummary(BaseModel):
@@ -62,7 +82,6 @@ class MovieRead(MovieBase):
             return []
         result = []
         for item in v:
-            # If it's a MovieGenre join object, extract the Genre
             if hasattr(item, "genre"):
                 result.append(item.genre)
             else:
