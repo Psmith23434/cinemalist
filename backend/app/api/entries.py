@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.models.entry import Entry
+from app.models.movie import Movie
+from app.models.movie_genre import MovieGenre
 from app.models.watch_event import WatchEvent
 from app.schemas.entry import EntryCreate, EntryUpdate, EntryRead
 from app.schemas.watch_event import WatchEventCreate, WatchEventRead
@@ -34,6 +36,7 @@ async def list_entries(
     watched: Optional[bool] = None,
     is_favorite: Optional[bool] = None,
     is_watchlisted: Optional[bool] = None,
+    genre_id: Optional[int] = Query(None, description="Filter by genre ID"),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = _entry_query()
@@ -43,7 +46,15 @@ async def list_entries(
         stmt = stmt.where(Entry.is_favorite == is_favorite)
     if is_watchlisted is not None:
         stmt = stmt.where(Entry.is_watchlisted == is_watchlisted)
+    if genre_id is not None:
+        stmt = (
+            stmt
+            .join(Movie, Movie.id == Entry.movie_id)
+            .join(MovieGenre, MovieGenre.movie_id == Movie.id)
+            .where(MovieGenre.genre_id == genre_id)
+        )
 
+    # Count query mirrors all active filters
     count_q = select(func.count(Entry.id)).where(Entry.deleted_at.is_(None))
     if watched is not None:
         count_q = count_q.where(Entry.watched == watched)
@@ -51,6 +62,13 @@ async def list_entries(
         count_q = count_q.where(Entry.is_favorite == is_favorite)
     if is_watchlisted is not None:
         count_q = count_q.where(Entry.is_watchlisted == is_watchlisted)
+    if genre_id is not None:
+        count_q = (
+            count_q
+            .join(Movie, Movie.id == Entry.movie_id)
+            .join(MovieGenre, MovieGenre.movie_id == Movie.id)
+            .where(MovieGenre.genre_id == genre_id)
+        )
 
     total = await db.scalar(count_q)
     stmt = stmt.offset((page - 1) * per_page).limit(per_page).order_by(Entry.updated_at.desc())
