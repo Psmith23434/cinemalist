@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 10:31 CEST
+> Last updated: 2026-04-06 10:40 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -33,12 +33,14 @@
 | | → `lists`, `list_items` | ✅ | |
 | | → `tmdb_cache`, `sync_log` | ✅ | |
 | 2.5 | Write Alembic migration (`0001_initial_tables.py`) | ✅ | `backend/alembic/versions/0001_initial_tables.py` |
-| 2.6 | Apply migration → `cinemalist.db` created locally | ✅ | Applied via `launcher.py` → Start Server (runs `alembic upgrade head` automatically). `cinemalist.db` exists at `backend/cinemalist.db`. Not in repo (`.gitignore`d). |
+| 2.6 | Apply migration → `cinemalist.db` created locally | ✅ | Applied via `launcher.py` → Start Backend (runs `alembic upgrade head` automatically). `cinemalist.db` exists at `backend/cinemalist.db`. Not in repo (`.gitignore`d). |
 | 2.7 | Build `run.py` helper script | ✅ | `backend/run.py` |
-| 2.8 | Build GUI launcher (`launcher.py`) with Start/Stop/Open Docs | ✅ | `/launcher.py` (17.9 KB) — runs `alembic upgrade head` then starts uvicorn on port 8000 |
+| 2.8 | Build GUI launcher (`launcher.py`) — Backend + Frontend | ✅ | `/launcher.py` (24.7 KB) — manages both processes. Backend: `alembic upgrade head` → uvicorn :8000. Frontend: `npm run dev` (Vite) :5173. npm path: `E:\NodeJS\npm.cmd` with `shutil.which` fallback. Window shows two separate status cards (gold = backend, purple = frontend) with pulsing dots, clickable URLs, and shared log prefixed `[BE]`/`[FE]`. |
 | 2.9 | Add `start.bat` one-click startup script | ✅ | `/start.bat` |
 
-> **How to start the backend:** Run `python launcher.py` from `E:\Projects\Cine`, then click **▶ Start Server**. The launcher automatically runs `alembic upgrade head` first (safe to re-run — skips already-applied migrations), then starts uvicorn on `http://localhost:8000`. Swagger UI is available at `http://localhost:8000/docs`.
+> **How to start everything:** Run `python launcher.py` from `E:\Projects\Cine`, then click **▶ Start Backend** (runs alembic + uvicorn on :8000) and **▶ Start Frontend** (runs `npm run dev` on :5173). Swagger UI: `http://localhost:8000/docs`. App: `http://localhost:5173`.
+
+> **npm path:** `launcher.py` looks for npm at `E:\NodeJS\npm.cmd` first, then falls back to `shutil.which("npm")` if not found there.
 
 > **Note (Alembic safe to re-run):** Running `alembic upgrade head` again after a `git pull` is always safe — Alembic tracks applied migrations in the `alembic_version` table inside `cinemalist.db`. It skips already-applied migrations and only runs new ones. Your existing data is never overwritten.
 
@@ -135,7 +137,7 @@
 | 6.2 | Configure FastAPI to serve static frontend at `/` | 🔲 |
 | 6.3 | Test full single-server setup (FastAPI serves both API + UI) | 🔲 |
 | 6.4 | `start.bat` one-click startup script | ✅ |
-| 6.5 | `launcher.py` GUI (Start / Stop / Open Docs / Open Folder) | ✅ |
+| 6.5 | `launcher.py` GUI (Start / Stop backend + frontend, Open Docs, Open App, Open Folder) | ✅ |
 | 6.6 | Update launcher to build + serve production mode | 🔲 |
 | 6.7 | Document full Windows setup in `README.md` | 🔲 |
 
@@ -195,8 +197,11 @@
 ├── PROJECT_PLAN.md          ✅ full project spec
 ├── PROJEKT_STEPS.md         ✅ this file
 ├── README.md                ✅
-├── launcher.py              ✅ GUI launcher (tkinter, dark cinema theme)
-│                               Starts backend: alembic upgrade head → uvicorn :8000
+├── launcher.py              ✅ GUI launcher (tkinter, dark cinema theme, 24.7 KB)
+│                               ▶ Start Backend  — alembic upgrade head → uvicorn :8000  (gold)
+│                               ▶ Start Frontend — npm run dev (Vite) → :5173           (purple)
+│                               npm path: E:\NodeJS\npm.cmd (shutil.which fallback)
+│                               Shared log with [BE] / [FE] prefix. Kills both on close.
 ├── start.bat                ✅ one-click CMD startup
 ├── cinemalist.html          ✅ placeholder / future static entry
 ├── sync-server.js           ✅ Node.js sync prototype (future)
