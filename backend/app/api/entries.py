@@ -44,7 +44,6 @@ async def list_entries(
     if is_watchlisted is not None:
         stmt = stmt.where(Entry.is_watchlisted == is_watchlisted)
 
-    # Bug 7 fix: apply the same filters to the count query
     count_stmt = select(func.count()).select_from(
         select(Entry).where(Entry.deleted_at.is_(None))
     )
@@ -91,7 +90,9 @@ async def create_entry(body: EntryCreate, db: AsyncSession = Depends(get_db)):
             entry_id=entry.id,
             watched_at=body.first_watched_at,
         ))
-    await db.flush()
+    # Bug 3 fix: commit explicitly before re-querying so WatchEvent is
+    # fully persisted and visible to the selectinload in _entry_query().
+    await db.commit()
     result = await db.execute(_entry_query().where(Entry.id == entry.id))
     return result.scalar_one()
 
@@ -167,7 +168,6 @@ async def delete_watch(
     await db.delete(event)
     await db.flush()
 
-    # Bug 12 fix: recalculate entry timestamps from remaining watch events
     entry = await db.get(Entry, entry_id)
     if entry:
         remaining = (
