@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 09:40 CEST
+> Last updated: 2026-04-06 10:14 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -42,24 +42,38 @@
 
 > **Note (Alembic safe to re-run):** Running `alembic upgrade head` again after a `git pull` is always safe — Alembic tracks applied migrations in the `alembic_version` table inside `cinemalist.db`. It skips already-applied migrations and only runs new ones. Your existing data is never overwritten.
 
+> **⚠️ Important — cinemalist.db:** The local `cinemalist.db` was wiped on 2026-04-06 during smoke-testing because the `watch_events` table was missing the `uuid` column (created before the column was added to the model). This is expected at this stage. Once Alembic is used for all schema changes, the DB will never need to be wiped again. The fix: always run `alembic upgrade head` after a `git pull` — never manually delete the DB once real data exists.
+
 ---
 
-## Phase 3 — TMDb API Integration ✅ DONE
+## Phase 3 — TMDb API Integration 🔶 IN PROGRESS
 
 | # | Task | Status | Evidence |
 |---|---|---|---|
 | 3.1 | Create `app/services/tmdb.py` — search, detail, import | ✅ | `backend/app/services/tmdb.py` (7.6 KB) |
 | 3.2 | Implement cache-first logic (7-day TTL in `tmdb_cache`) | ✅ | Inside `tmdb.py` |
-| 3.3 | ~~Download + store poster images to `media/posters/`~~ | 🚫 | **Permanently won't do.** Posters are served directly via TMDb CDN: `https://image.tmdb.org/t/p/w500/{poster_path}`. The `poster_path` column is stored in the `movies` table. The frontend constructs the full URL dynamically. No local file storage needed. This is the permanent, final approach for the project. |
+| 3.3 | ~~Download + store poster images to `media/posters/`~~ | 🚫 | **Permanently won't do.** Posters served via TMDb CDN: `https://image.tmdb.org/t/p/w500/{poster_path}`. Stored as path in `movies.poster_path`. |
 | 3.4 | Write Pydantic schemas | ✅ | `schemas/movie.py`, `schemas/entry.py`, `schemas/stats.py`, `schemas/list.py` |
 | 3.5 | Build API router: `GET /api/search/tmdb?q=` | ✅ | `backend/app/api/search.py` |
-| 3.6 | Build API router: `POST /api/search/tmdb/import` | ✅ | `backend/app/api/search.py` |
+| 3.6 | Build API router: `POST /api/search/tmdb/import/{tmdb_id}` | ✅ | `backend/app/api/search.py` |
 | 3.7 | Build API router: `GET /api/movies/` with genre/sort/direction filters | ✅ | `backend/app/api/movies.py` (5.9 KB) |
 | 3.8 | Build CRUD for entries: `POST/GET/PUT/DELETE /api/entries/` | ✅ | `backend/app/api/entries.py` (5.0 KB) |
 | 3.9 | Build API routers: genres, tags, lists, stats, sync | ✅ | `genres.py`, `tags.py`, `lists.py`, `stats.py`, `sync.py` |
-| 3.10 | Test all endpoints in Swagger UI (`/docs`) | ⏳ | Backend confirmed running at `http://localhost:8000/docs` ✅. Full smoke-test of all endpoints pending. |
+| 3.10 | Smoke-test all endpoints in Swagger UI (`/docs`) | 🔶 | See details below |
 
-> **Note (3.10):** Backend is live and Swagger UI loads correctly. Next step is to smoke-test each endpoint group (search, movies, entries, tags, lists, stats) with real TMDb API key in `.env`.
+### 3.10 Smoke-Test Status (2026-04-06)
+
+| Step | Endpoint | Status | Notes |
+|---|---|---|---|
+| S1 | `GET /` health check | ✅ | Returns `{"status": "ok"}` |
+| S2 | `GET /api/search/tmdb?q=inception` | ✅ | Returns TMDb results. **Fix required:** use "API-Token für Lesezugriff" (long Bearer token) in `.env` as `TMDB_API_KEY`, NOT the short "API-Schlüssel". |
+| S3 | `POST /api/search/tmdb/import/27205` (Inception) | ✅ | 201 Created. Bug fixed: `MovieRead` schema was receiving `MovieGenre` join objects instead of `Genre` objects — fixed in `schemas/movie.py` with `@field_validator("genres", mode="before")` that unwraps `.genre` attribute. |
+| S3b | `POST /api/search/tmdb/import/157336` (Interstellar) | ✅ | 201 Created. Clean import with genres Adventure, Drama, Science Fiction. |
+| S4 | `GET /api/movies/` | ✅ | Returns both movies. |
+| S5 | `POST /api/entries/` | ⏳ | **Blocked by schema mismatch.** `watch_events` table was missing `uuid` column (DB created before column was added). Fix: delete `cinemalist.db`, restart launcher (Alembic recreates all tables correctly), then re-import movies and retry. |
+| S6 | `GET /api/stats/` | ⏳ | Not yet reached — pending S5 fix. |
+
+> **⏳ Next action:** Delete `backend/cinemalist.db` locally, restart launcher, re-import Inception (27205) + Interstellar (157336), then complete S5 (`POST /api/entries/`) and S6 (`GET /api/stats/`).
 
 ---
 
@@ -76,9 +90,10 @@
 | 4.7 | Build Lists & Tags management | ✅ |
 | 4.8 | Add dark mode toggle | ✅ |
 | 4.9 | Configure CORS between Vite (5173) and FastAPI (8000) | ✅ |
-| 4.10 | Build React frontend as production bundle into `backend/static/` | 🔲 |
+| 4.10 | Wire frontend to live backend (replace mock data with API calls) | ⏳ |
+| 4.11 | Build React frontend as production bundle into `backend/static/` | 🔲 |
 
-> **Current status:** Frontend running at `http://localhost:5173`. Fixed `Wrap` import crash in `TagsPage.jsx` (not a valid Mantine v7 export). All pages render. Backend not yet wired to frontend — empty states everywhere until smoke-test (3.10) is complete.
+> **Current status:** Frontend running at `http://localhost:5173`. All pages render. Frontend is **not yet wired to the backend** — empty states everywhere. This is the next major task after smoke-test (3.10) is fully complete.
 
 > **Mantine version note:** Project uses **Mantine v7**. A future upgrade to v9 is documented in `PROJECT_PLAN.md` Section 11, to be done after Phase 5 (testing) when the app is fully working end-to-end.
 
@@ -176,8 +191,12 @@
 ├── sync-server.js           ✅ Node.js sync prototype (future)
 └── backend/
     ├── .env                 ✅ local only — contains TMDB_API_KEY (not in repo)
+    │                           ⚠️  Use "API-Token für Lesezugriff" (long Bearer token)
+    │                               NOT the short "API-Schlüssel"
     ├── .env.example         ✅
-    ├── cinemalist.db        ✅ local only — SQLite database (not in repo, .gitignored)
+    ├── cinemalist.db        ⚠️  local only — SQLite DB (.gitignored)
+    │                           Safe to delete during dev. Once Alembic is used for
+    │                           all changes, never delete manually again.
     ├── README.md            ✅
     ├── alembic.ini          ✅
     ├── requirements.txt     ✅
@@ -190,7 +209,8 @@
         ├── models/          ✅ (all 11 ORM models)
         ├── schemas/
         │   ├── common.py    ✅
-        │   ├── movie.py     ✅
+        │   ├── movie.py     ✅ fixed 2026-04-06: genres field now unwraps MovieGenre
+        │   │                   join objects via @field_validator
         │   ├── entry.py     ✅
         │   ├── watch_event.py ✅
         │   ├── list.py      ✅
@@ -212,8 +232,23 @@
 ```
 
 > **Local-only files (not in repo, .gitignored):**
-> - `backend/cinemalist.db` — SQLite database, created by `alembic upgrade head` on first launcher start ✅
-> - `backend/.env` — contains `TMDB_API_KEY` and other secrets ✅
+> - `backend/cinemalist.db` — SQLite database, created by `alembic upgrade head` on first launcher start
+> - `backend/.env` — contains `TMDB_API_KEY` (use long Bearer token!) and other secrets
+
+---
+
+## ⏳ Immediate Next Steps
+
+1. **Complete smoke-test S5 + S6** (entries + stats):
+   - Delete `backend/cinemalist.db` locally
+   - Restart launcher → Start Server
+   - Re-import: `POST /api/search/tmdb/import/27205` and `/157336`
+   - `POST /api/entries/` with `movie_id: 1, rating: 9, notes: "Smoke test", watched: true`
+   - `GET /api/stats/` → confirm totals, avg rating
+
+2. **Set up Alembic going forward** — after smoke-test passes, any model change must go through an Alembic migration (`alembic revision --autogenerate -m "description"`) instead of dropping the DB.
+
+3. **Wire frontend to backend (Phase 4.10)** — replace mock/empty states in React with real API calls to `http://localhost:8000/api/`.
 
 ---
 
@@ -221,9 +256,9 @@
 
 ```
 Phase 1  [██████████] 100% ✅  Planning & repo setup
-Phase 2  [██████████] 100% ✅  Backend + DB (migration applied, cinemalist.db exists)
-Phase 3  [█████████░]  95% 🔶  TMDb integration (code done, smoke-test pending)
-Phase 4  [█████████░]  90% 🔶  React frontend (all pages built, prod bundle pending)
+Phase 2  [██████████] 100% ✅  Backend + DB (migration applied)
+Phase 3  [█████████░]  90% 🔶  TMDb integration (S1-S4 ✅, S5-S6 pending)
+Phase 4  [████████░░]  80% 🔶  React frontend (all pages built, not yet wired to backend)
 Phase 5  [          ]   0% 🔲  Testing + AI
 Phase 6  [██        ]  20% 🔲  (start.bat + launcher.py done, rest needs frontend build)
 Phase 7  [          ]   0% 🔲  Server/VPS
