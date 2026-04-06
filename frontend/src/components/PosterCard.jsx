@@ -1,5 +1,5 @@
-import { Card, Image, Text, Badge, Group, Rating, Box, Tooltip } from '@mantine/core';
-import { IconHeart, IconHeartFilled } from '@tabler/icons-react';
+import { Card, Image, Text, Group, Rating, Box, Tooltip } from '@mantine/core';
+import { IconHeartFilled } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { posterUrl } from '../api/client';
 
@@ -39,7 +39,8 @@ export default function PosterCard({ entry }) {
 
         <Group justify="space-between" mt={4} align="center">
           <Text size="xs" c="dimmed">{movie.year ?? '—'}</Text>
-          {entry.is_favourite && <IconHeartFilled size={14} color="#e2b04a" />}
+          {/* Bug 13 fix: was entry.is_favourite (British) — API field is is_favorite */}
+          {entry.is_favorite && <IconHeartFilled size={14} color="#e2b04a" />}
         </Group>
 
         {entry.rating != null && (
