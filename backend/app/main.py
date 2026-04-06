@@ -5,16 +5,14 @@ from contextlib import asynccontextmanager
 import os
 
 from app.core.config import settings
-from app.core.database import engine, Base
 from app.api import movies, entries, lists, tags, genres, stats, search, sync
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create DB tables on startup (Alembic handles migrations in production)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    # Ensure media directory exists
+    # Schema is managed exclusively by Alembic (run via launcher.py before uvicorn).
+    # Do NOT call Base.metadata.create_all here — it conflicts with Alembic's
+    # alembic_version tracking and causes duplicate-table errors on fresh installs.
     os.makedirs(settings.MEDIA_DIR, exist_ok=True)
     yield
 
@@ -35,11 +33,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Static files for cached posters ───────────────────────
+# ── Static files for cached posters ─────────────────────
 if os.path.exists(settings.MEDIA_DIR):
     app.mount("/media", StaticFiles(directory=settings.MEDIA_DIR), name="media")
 
-# ── Routers ───────────────────────────────────────────────
+# ── Routers ───────────────────────────────────────────
 app.include_router(movies.router,  prefix="/api/movies",  tags=["movies"])
 app.include_router(entries.router, prefix="/api/entries", tags=["entries"])
 app.include_router(lists.router,   prefix="/api/lists",   tags=["lists"])
