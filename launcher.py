@@ -7,6 +7,7 @@ import webbrowser
 import time
 import signal
 import shutil
+import re
 
 # ── paths ───────────────────────────────────────────────────────────────────────────
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +41,13 @@ server_proc    = None
 server_thread  = None
 frontend_proc  = None
 frontend_thread = None
+
+# ── ANSI stripping ────────────────────────────────────────────────────────────────────
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHF]|\x1b\[[?][0-9;]*[hl]")
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI/VT100 colour and cursor-control escape sequences."""
+    return _ANSI_RE.sub("", text)
 
 
 def _kill_proc_tree(proc):
@@ -373,6 +381,7 @@ class App(tk.Tk):
                 capture_output=True, text=True,
             )
             for line in (r.stdout + r.stderr).splitlines():
+                line = strip_ansi(line)
                 tag = "success" if "Running upgrade" in line else "dim"
                 self._log(line, tag)
 
@@ -391,7 +400,7 @@ class App(tk.Tk):
             self.stop_btn.configure_color(bg=RED, fg=TEXT, text="\u25a0  Stop Backend")
 
             for line in server_proc.stdout:
-                line = line.rstrip()
+                line = strip_ansi(line.rstrip())
                 if not line:
                     continue
                 tag = (
@@ -466,7 +475,7 @@ class App(tk.Tk):
             )
 
             for line in frontend_proc.stdout:
-                line = line.rstrip()
+                line = strip_ansi(line.rstrip())
                 if not line:
                     continue
                 # detect when Vite is ready
@@ -520,10 +529,10 @@ class App(tk.Tk):
     def _on_close(self):
         global server_proc, frontend_proc
         if server_proc:
-            self._log("Closing — killing backend\u2026", "warn")
+            self._log("Closing \u2014 killing backend\u2026", "warn")
             _kill_proc_tree(server_proc)
         if frontend_proc:
-            self._log("Closing — killing frontend\u2026", "warn")
+            self._log("Closing \u2014 killing frontend\u2026", "warn")
             _kill_proc_tree(frontend_proc)
         self.destroy()
 
