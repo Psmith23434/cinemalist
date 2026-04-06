@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.core.config import settings
-from app.api import movies, entries, lists, tags, genres, stats, search, sync
+from app.api import movies, entries, lists, tags, genres, stats, search, sync, ai
 
 # Path to the React production build (built by `npm run build` in frontend/)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
@@ -37,11 +37,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Static files for cached posters ───────────────────────────────────────────
+# ── Static files for cached posters ──────────────────────────────────────────
 if os.path.exists(settings.MEDIA_DIR):
     app.mount("/media", StaticFiles(directory=settings.MEDIA_DIR), name="media")
 
-# ── Routers ────────────────────────────────────────────────────────────────────
+# ── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(movies.router,  prefix="/api/movies",  tags=["movies"])
 app.include_router(entries.router, prefix="/api/entries", tags=["entries"])
 app.include_router(lists.router,   prefix="/api/lists",   tags=["lists"])
@@ -50,6 +50,7 @@ app.include_router(genres.router,  prefix="/api/genres",  tags=["genres"])
 app.include_router(stats.router,   prefix="/api/stats",   tags=["stats"])
 app.include_router(search.router,  prefix="/api/search",  tags=["search"])
 app.include_router(sync.router,    prefix="/api/sync",    tags=["sync"])
+app.include_router(ai.router,      prefix="/api/ai",      tags=["ai"])
 
 
 @app.get("/api/health")
@@ -57,7 +58,7 @@ async def health_check():
     return {"status": "ok", "version": "0.1.0"}
 
 
-# ── React SPA — serve production build from backend/static/ ───────────────────
+# ── React SPA — serve production build from backend/static/ ─────────────────────
 # IMPORTANT: this must come AFTER all /api/* routers so the catch-all
 # does not shadow any API endpoints.
 #

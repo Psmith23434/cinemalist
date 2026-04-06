@@ -1,6 +1,6 @@
 # CinemaList — Project Steps
 
-> Last updated: 2026-04-06 13:20 CEST
+> Last updated: 2026-04-06 13:25 CEST
 > **Legend:** ✅ Done · 🔶 In Progress · ⏳ Up Next · 🔲 Planned · 🚫 N/A (won't do)
 
 ---
@@ -106,13 +106,56 @@
 | 5.1 | Write `pytest` test suite for backend (`backend/tests/`) | ✅ |
 | 5.2 | Add database indexes on frequently queried columns | 🔲 |
 | 5.3 | Add error handling: missing posters, API failures, duplicates | 🔲 |
-| 5.4 | Implement `app/services/llm.py` — LLM proxy connection | ⏳ |
-| 5.5 | Build `GET /api/ai/recommend` — personalised recommendations | 🔲 |
-| 5.6 | Build `GET /api/ai/stats-report` — narrative stats summary | 🔲 |
-| 5.7 | Build `POST /api/ai/suggest-tags` — auto-tag suggestions | 🔲 |
-| 5.8 | Build `GET /api/ai/search` — natural language library search | 🔲 |
-| 5.9 | Add LLM response caching (`llm_cache` table) | 🔲 |
-| 5.10 | Add "For You ✨" tab in React Statistics page | 🔲 |
+| 5.4 | Implement `app/services/llm.py` — LLM proxy connection | ✅ |
+| 5.5 | Build `GET /api/ai/recommend` — personalised recommendations | ✅ |
+| 5.6 | Build `GET /api/ai/stats-report` — narrative stats summary | ✅ |
+| 5.7 | Build `POST /api/ai/suggest-tags` — auto-tag suggestions | ✅ |
+| 5.8 | Build `GET /api/ai/search` — natural language library search | ✅ |
+| 5.9 | Add LLM response caching (`llm_cache` table) | ⏳ |
+| 5.10 | Add "For You ✨" tab in React Statistics page | ⏳ |
+
+### 5.4–5.8 — AI Integration Details (Completed 2026-04-06)
+
+#### `backend/app/services/llm.py`
+
+| Function | What it does |
+|---|---|
+| `chat(messages, max_tokens, temperature)` | Low-level OpenAI-compat chat completion. Raises 503 if key missing, 502 on upstream error |
+| `recommend(entries)` | Builds a compact watched-list prompt, returns 8 recommendations as `[{title, year, reason}]` |
+| `stats_report(stats)` | Sends live stats JSON, returns a 2-4 sentence German narrative |
+| `suggest_tags(movie)` | Sends movie metadata, returns 5-8 short German tag strings |
+| `nl_search(query, entries)` | Sends full library + query, returns matching entry dicts |
+
+#### `backend/app/api/ai.py`
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/ai/recommend` | GET | 8 personalised recommendations based on watch history |
+| `/api/ai/stats-report` | GET | German prose summary of user statistics |
+| `/api/ai/suggest-tags?movie_id=` | POST | 5-8 auto-suggested tags for a movie |
+| `/api/ai/search?q=` | GET | Natural language search (German or English) over library |
+
+#### LLM Configuration (backend/.env)
+
+```env
+# OpenAI (default)
+LLM_API_KEY=sk-...
+LLM_MODEL=gpt-4o-mini
+LLM_PROXY_URL=https://api.openai.com/v1
+
+# Google Gemini (openai-compat)
+LLM_API_KEY=AIza...
+LLM_MODEL=gemini-2.0-flash
+LLM_PROXY_URL=https://generativelanguage.googleapis.com/v1beta/openai
+
+# Local Ollama
+LLM_API_KEY=ollama
+LLM_MODEL=llama3
+LLM_PROXY_URL=http://localhost:11434/v1
+```
+
+> **Note:** All AI endpoints return HTTP 503 with a helpful message when `LLM_API_KEY` is empty.
+> The rest of the app works perfectly without AI configured.
 
 ### 5.1 — Test Suite Details (Completed 2026-04-06)
 
@@ -251,7 +294,7 @@ Phase 1  [██████████] 100% ✅  Planning & repo setup
 Phase 2  [██████████] 100% ✅  Backend + DB
 Phase 3  [██████████] 100% ✅  TMDb integration
 Phase 4  [██████████] 100% ✅  React frontend — COMPLETE
-Phase 5  [█         ]  10% 🔶  Testing + AI (5.1 done, 5.4 next)
+Phase 5  [████████  ]  80% 🔶  Testing + AI (5.9 + 5.10 remaining)
 Phase 6  [█████████ ]  90% ✅  Local deployment (README remaining)
 Phase 7  [          ]   0% 🔲  Server/VPS
 Phase 8  [█         ]  10% 🔲  (sync.py skeleton done)
@@ -263,7 +306,7 @@ Phase 9  [████      ]  40% 🔶  German i18n (backend done, frontend pen
 ## ⏳ Immediate Next Steps
 
 1. **Run the test suite locally:** `cd backend && venv\Scripts\activate && pytest -v`
-2. **Phase 9.9–9.14** — Add `react-i18next` to frontend + DE/EN language toggle in header.
-3. **Phase 5.4** — Build `backend/app/services/llm.py` (LLM proxy: OpenAI / Gemini / Ollama).
-4. **Phase 5.5–5.8** — Build `/api/ai/` endpoints (recommendations, stats report, tag suggestions, NL search).
+2. **Phase 5.9** — Add LLM response caching to avoid repeated identical AI calls.
+3. **Phase 5.10** — Build "For You ✨" tab in the React Statistics/Recommendations page.
+4. **Phase 9.9–9.14** — Add `react-i18next` to frontend + DE/EN language toggle in header.
 5. **Phase 6.7** — Update `README.md` with full Windows setup instructions.
