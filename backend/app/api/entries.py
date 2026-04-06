@@ -44,10 +44,6 @@ async def list_entries(
     if is_watchlisted is not None:
         stmt = stmt.where(Entry.is_watchlisted == is_watchlisted)
 
-    # Fix: build count as a proper scalar subquery so all active filters
-    # are applied. The previous version used select_from(inner_subquery)
-    # which created a cartesian product and ignored the filter clauses,
-    # causing total to always report the unfiltered count.
     count_q = select(func.count(Entry.id)).where(Entry.deleted_at.is_(None))
     if watched is not None:
         count_q = count_q.where(Entry.watched == watched)
@@ -102,8 +98,18 @@ async def update_entry(
     entry_id: int, body: EntryUpdate, db: AsyncSession = Depends(get_db)
 ):
     from app.models.tag import Tag
-    entry = await db.get(Entry, entry_id)
-    if not entry or entry.deleted_at:
+
+    # Fetch with tags eagerly loaded — required so that assigning entry.tags
+    # does NOT trigger a synchronous lazy load (which raises MissingGreenlet
+    # in an async session). Without selectinload(Entry.tags) here, SQLAlchemy
+    # attempts to load the existing collection synchronously before replacing it.
+    result = await db.execute(
+        select(Entry)
+        .where(Entry.id == entry_id, Entry.deleted_at.is_(None))
+        .options(selectinload(Entry.tags))
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
 
     update_data = body.model_dump(exclude_unset=True)
@@ -113,10 +119,9 @@ async def update_entry(
         setattr(entry, field, value)
     entry.updated_at = datetime.now(timezone.utc)
 
-    # Apply tag assignment if tag_ids were provided
     if tag_ids is not None:
         tags_result = await db.execute(select(Tag).where(Tag.id.in_(tag_ids)))
-        entry.tags = tags_result.scalars().all()
+        entry.tags = list(tags_result.scalars().all())
 
     await db.flush()
     result = await db.execute(_entry_query().where(Entry.id == entry_id))
@@ -133,7 +138,7 @@ async def delete_entry(entry_id: int, db: AsyncSession = Depends(get_db)):
     return {"message": "Entry deleted", "ok": True}
 
 
-# ── Watch Events ───────────────────────────────────────────────────
+# ── Watch Events ───────────────────────────────────────────────────────────────
 
 @router.post("/{entry_id}/watches", response_model=WatchEventRead, status_code=201)
 async def log_watch(
