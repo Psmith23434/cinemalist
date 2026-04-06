@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.models.entry import Entry
@@ -44,17 +44,19 @@ async def list_entries(
     if is_watchlisted is not None:
         stmt = stmt.where(Entry.is_watchlisted == is_watchlisted)
 
-    count_stmt = select(func.count()).select_from(
-        select(Entry).where(Entry.deleted_at.is_(None))
-    )
+    # Fix: build count as a proper scalar subquery so all active filters
+    # are applied. The previous version used select_from(inner_subquery)
+    # which created a cartesian product and ignored the filter clauses,
+    # causing total to always report the unfiltered count.
+    count_q = select(func.count(Entry.id)).where(Entry.deleted_at.is_(None))
     if watched is not None:
-        count_stmt = count_stmt.where(Entry.watched == watched)
+        count_q = count_q.where(Entry.watched == watched)
     if is_favorite is not None:
-        count_stmt = count_stmt.where(Entry.is_favorite == is_favorite)
+        count_q = count_q.where(Entry.is_favorite == is_favorite)
     if is_watchlisted is not None:
-        count_stmt = count_stmt.where(Entry.is_watchlisted == is_watchlisted)
+        count_q = count_q.where(Entry.is_watchlisted == is_watchlisted)
 
-    total = await db.scalar(count_stmt)
+    total = await db.scalar(count_q)
     stmt = stmt.offset((page - 1) * per_page).limit(per_page).order_by(Entry.updated_at.desc())
     result = await db.execute(stmt)
     items = result.scalars().all()
@@ -90,8 +92,6 @@ async def create_entry(body: EntryCreate, db: AsyncSession = Depends(get_db)):
             entry_id=entry.id,
             watched_at=body.first_watched_at,
         ))
-    # Bug 3 fix: commit explicitly before re-querying so WatchEvent is
-    # fully persisted and visible to the selectinload in _entry_query().
     await db.commit()
     result = await db.execute(_entry_query().where(Entry.id == entry.id))
     return result.scalar_one()
@@ -101,12 +101,23 @@ async def create_entry(body: EntryCreate, db: AsyncSession = Depends(get_db)):
 async def update_entry(
     entry_id: int, body: EntryUpdate, db: AsyncSession = Depends(get_db)
 ):
+    from app.models.tag import Tag
     entry = await db.get(Entry, entry_id)
     if not entry or entry.deleted_at:
         raise HTTPException(status_code=404, detail="Entry not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+
+    update_data = body.model_dump(exclude_unset=True)
+    tag_ids = update_data.pop("tag_ids", None)
+
+    for field, value in update_data.items():
         setattr(entry, field, value)
-    entry.updated_at = datetime.utcnow()
+    entry.updated_at = datetime.now(timezone.utc)
+
+    # Apply tag assignment if tag_ids were provided
+    if tag_ids is not None:
+        tags_result = await db.execute(select(Tag).where(Tag.id.in_(tag_ids)))
+        entry.tags = tags_result.scalars().all()
+
     await db.flush()
     result = await db.execute(_entry_query().where(Entry.id == entry_id))
     return result.scalar_one()
@@ -118,7 +129,7 @@ async def delete_entry(entry_id: int, db: AsyncSession = Depends(get_db)):
     entry = await db.get(Entry, entry_id)
     if not entry or entry.deleted_at:
         raise HTTPException(status_code=404, detail="Entry not found")
-    entry.deleted_at = datetime.utcnow()
+    entry.deleted_at = datetime.now(timezone.utc)
     return {"message": "Entry deleted", "ok": True}
 
 
@@ -134,7 +145,7 @@ async def log_watch(
         raise HTTPException(status_code=404, detail="Entry not found")
     event = WatchEvent(
         entry_id=entry_id,
-        watched_at=body.watched_at or datetime.utcnow(),
+        watched_at=body.watched_at or datetime.now(timezone.utc),
         platform=body.platform,
         note=body.note,
     )

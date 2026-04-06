@@ -3,7 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.models.list import MovieList
@@ -14,6 +15,10 @@ from app.schemas.list import MovieListCreate, MovieListUpdate, MovieListRead, Mo
 from app.schemas.common import MessageResponse
 
 router = APIRouter()
+
+
+class AddItemBody(BaseModel):
+    entry_id: int
 
 
 @router.get("/", response_model=List[MovieListRead])
@@ -43,7 +48,7 @@ async def get_list(list_id: int, db: AsyncSession = Depends(get_db)):
         .options(
             selectinload(MovieList.items)
             .selectinload(ListItem.entry)
-            .selectinload(Entry.movie)  # Bug 5: was missing — caused MissingGreenlet on serialization
+            .selectinload(Entry.movie)
         )
     )
     ml = result.scalar_one_or_none()
@@ -61,7 +66,7 @@ async def update_list(
         raise HTTPException(status_code=404, detail="List not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(ml, field, value)
-    ml.updated_at = datetime.utcnow()
+    ml.updated_at = datetime.now(timezone.utc)
     await db.flush()
     await db.refresh(ml)
     return ml
@@ -72,14 +77,37 @@ async def delete_list(list_id: int, db: AsyncSession = Depends(get_db)):
     ml = await db.get(MovieList, list_id)
     if not ml or ml.deleted_at:
         raise HTTPException(status_code=404, detail="List not found")
-    ml.deleted_at = datetime.utcnow()
+    ml.deleted_at = datetime.now(timezone.utc)
     return {"message": f"List '{ml.name}' deleted", "ok": True}
+
+
+@router.post("/{list_id}/items", response_model=MessageResponse, status_code=201)
+async def add_item_to_list(
+    list_id: int, body: AddItemBody, db: AsyncSession = Depends(get_db)
+):
+    """Add an entry to a list by entry_id in the request body."""
+    ml = await db.get(MovieList, list_id)
+    if not ml or ml.deleted_at:
+        raise HTTPException(status_code=404, detail="List not found")
+    entry = await db.get(Entry, body.entry_id)
+    if not entry or entry.deleted_at:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    existing = await db.execute(
+        select(ListItem).where(ListItem.list_id == list_id, ListItem.entry_id == body.entry_id)
+    )
+    if existing.scalar_one_or_none():
+        return {"message": "Entry already in list", "ok": True}
+    count_result = await db.execute(select(ListItem).where(ListItem.list_id == list_id))
+    position = len(count_result.scalars().all())
+    db.add(ListItem(list_id=list_id, entry_id=body.entry_id, position=position))
+    return {"message": "Entry added to list", "ok": True}
 
 
 @router.post("/{list_id}/entries/{entry_id}", response_model=MessageResponse)
 async def add_entry_to_list(
     list_id: int, entry_id: int, db: AsyncSession = Depends(get_db)
 ):
+    """Legacy path-param endpoint — kept for backwards compatibility."""
     ml = await db.get(MovieList, list_id)
     if not ml or ml.deleted_at:
         raise HTTPException(status_code=404, detail="List not found")
@@ -91,9 +119,7 @@ async def add_entry_to_list(
     )
     if existing.scalar_one_or_none():
         return {"message": "Entry already in list", "ok": True}
-    count_result = await db.execute(
-        select(ListItem).where(ListItem.list_id == list_id)
-    )
+    count_result = await db.execute(select(ListItem).where(ListItem.list_id == list_id))
     position = len(count_result.scalars().all())
     db.add(ListItem(list_id=list_id, entry_id=entry_id, position=position))
     return {"message": "Entry added to list", "ok": True}

@@ -33,6 +33,7 @@ class EntryUpdate(BaseModel):
     watched: Optional[bool] = None
     first_watched_at: Optional[datetime] = None
     last_watched_at: Optional[datetime] = None
+    tag_ids: Optional[List[int]] = None
 
 
 class EntryRead(EntryBase):
@@ -44,9 +45,6 @@ class EntryRead(EntryBase):
     tags: List[TagRead] = []
     created_at: datetime
     updated_at: datetime
-    # Bug 13 fix: sync_pull returns soft-deleted entries so Android can
-    # process deletions. Without this field the client cannot distinguish
-    # a deleted entry from an active one — ghost entries would accumulate.
     deleted_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}

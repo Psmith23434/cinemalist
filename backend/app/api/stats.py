@@ -13,11 +13,9 @@ from app.schemas.stats import StatsOverview, GenreStat, YearStat, RatingDistribu
 router = APIRouter()
 
 
-@router.get("/overview", response_model=StatsOverview)
-async def stats_overview(db: AsyncSession = Depends(get_db)):
-    """Aggregate statistics for the user's library."""
+async def _build_overview(db: AsyncSession) -> StatsOverview:
+    """Shared implementation — called by both the '/' and '/overview' routes."""
 
-    # Totals
     watched_count = await db.scalar(
         select(func.count(Entry.id)).where(Entry.watched == True, Entry.deleted_at.is_(None))
     )
@@ -38,7 +36,6 @@ async def stats_overview(db: AsyncSession = Depends(get_db)):
         .where(Entry.watched == True, Entry.deleted_at.is_(None), Movie.runtime.isnot(None))
     )
 
-    # Top genres
     genre_rows = await db.execute(
         select(Genre.name, func.count(MovieGenre.movie_id).label("cnt"))
         .join(MovieGenre, MovieGenre.genre_id == Genre.id)
@@ -51,9 +48,7 @@ async def stats_overview(db: AsyncSession = Depends(get_db)):
     )
     top_genres = [GenreStat(genre=row.name, count=row.cnt) for row in genre_rows]
 
-    # By year watched — Bug 8 fix: func.extract works on both SQLite and PostgreSQL.
-    # func.strftime("%Y", ...) was SQLite-only and would break on Phase 7 PostgreSQL migration.
-    # func.extract returns a float on SQLite (e.g. 2026.0), cast to int before use.
+    # func.extract works on both SQLite and PostgreSQL (unlike strftime which is SQLite-only)
     year_expr = func.extract("year", Entry.first_watched_at)
     year_rows = await db.execute(
         select(
@@ -70,7 +65,6 @@ async def stats_overview(db: AsyncSession = Depends(get_db)):
         for row in year_rows
     ]
 
-    # Rating distribution (buckets: 1-2, 3-4, 5-6, 7-8, 9-10)
     buckets = [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10)]
     rating_dist = []
     for low, high in buckets:
@@ -91,3 +85,15 @@ async def stats_overview(db: AsyncSession = Depends(get_db)):
         rating_distribution=rating_dist,
         total_runtime_minutes=total_runtime,
     )
+
+
+@router.get("/", response_model=StatsOverview)
+async def stats_root(db: AsyncSession = Depends(get_db)):
+    """Stats overview — root alias used by tests and the frontend."""
+    return await _build_overview(db)
+
+
+@router.get("/overview", response_model=StatsOverview)
+async def stats_overview(db: AsyncSession = Depends(get_db)):
+    """Stats overview — explicit /overview path kept for backwards compatibility."""
+    return await _build_overview(db)
