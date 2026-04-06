@@ -18,6 +18,7 @@
 8. [GitHub & Development Workflow](#8-github--development-workflow)
 9. [Local Development Setup (Windows)](#9-local-development-setup-windows)
 10. [Best Starting Approach — Summary](#10-best-starting-approach--summary)
+11. [Future Upgrades](#11-future-upgrades)
 
 ---
 
@@ -1276,6 +1277,43 @@ Visit `http://localhost:5173` — React app is running.
 > **Build the REST API correctly from Phase 1, even if there is no Android app yet.**
 
 Having a proper REST API (`GET /api/movies`, `POST /api/entries`, etc.) costs almost nothing extra now, and saves a massive amount of rework later when you want to add Android sync. The API is also how the React frontend talks to the backend — you need it regardless.
+
+---
+
+## 11. Future Upgrades
+
+### Mantine UI v9 Upgrade
+
+**Current version:** Mantine v7 (`@mantine/core@^7.10.0`)
+**Target version:** Mantine v9
+
+**Why deferred:** The entire frontend was built on Mantine v7, which was the current stable version at the time of project setup. Upgrading mid-build would require rewriting all frontend files simultaneously and risks breaking the app before it is even fully working. Mantine v7 is fully supported and production-ready.
+
+**When to do it:** After Phase 5 (testing) is complete and the app works end-to-end.
+
+**Files that require changes (complete list):**
+
+| File | What changes |
+|---|---|
+| `frontend/package.json` | Bump all `@mantine/*` packages to `^9.x.x` |
+| `frontend/src/main.jsx` | Update `MantineProvider` and `createTheme` API |
+| `frontend/src/App.jsx` | Update `AppShell`, `NavLink` styles prop syntax, `Burger` |
+| `frontend/src/pages/MovieDetailPage.jsx` | Update `DatePickerInput` import path + props |
+| `frontend/src/pages/LibraryPage.jsx` | Verify `TextInput`, `Select`, `SimpleGrid` props |
+| `frontend/src/pages/AddMoviePage.jsx` | Verify `Card`, `Image`, `Button` props |
+| `frontend/src/pages/ListsPage.jsx` | Update `Modal` props (breaking change in v8+) |
+| `frontend/src/pages/StatsPage.jsx` | Verify `Progress`, `SimpleGrid` props |
+| `frontend/src/pages/TagsPage.jsx` | Verify `Badge`, `TextInput` props |
+| `frontend/src/pages/WatchlistPage.jsx` | Verify `SimpleGrid`, `Loader` props |
+| `frontend/src/pages/FavouritesPage.jsx` | Verify `SimpleGrid`, `Loader` props |
+
+**Upgrade command (run when ready):**
+```bash
+cd frontend
+npm install @mantine/core@9 @mantine/hooks@9 @mantine/notifications@9 @mantine/charts@9 @mantine/dates@9
+```
+
+Then test every page and fix broken props before committing.
 
 ---
 
