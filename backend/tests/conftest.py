@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from app.main import app
 from app.core.database import Base, get_db
 
-# ── In-memory async SQLite engine (no file, no state between tests) ──────────
+# ── In-memory async SQLite engine (no file, no state between tests) ────────────────────
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 
@@ -50,20 +50,37 @@ async def client(db_session):
     """
     AsyncClient wired to the FastAPI app with get_db() overridden
     so every request goes through the test session.
+
+    follow_redirects=True is required because FastAPI (via Starlette) issues a
+    307 redirect for routes registered without a trailing slash when the client
+    requests them with one (e.g. /api/stats/ -> /api/stats). Without this the
+    stats and sync tests receive a redirect response rather than JSON.
     """
     async def _override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as ac:
         yield ac
     app.dependency_overrides.clear()
 
 
 # ── Helper: seed a minimal Movie row directly (bypasses TMDb) ─────────────────
-async def create_test_movie(db_session, tmdb_id: int = 550, title: str = "Fight Club") -> dict:
-    """Insert a Movie directly via ORM. Returns the movie dict-like object."""
+async def create_test_movie(db_session, tmdb_id: int = 550, title: str = "Fight Club"):
+    """
+    Insert a Movie directly via ORM, using only columns that exist on the model.
+
+    Correct field mapping (conftest vs Movie model):
+        original_language  -> language          (the model column is 'language')
+        popularity         -> (removed)          (no such column on Movie)
+        vote_average       -> tmdb_rating        (the model column is 'tmdb_rating')
+        vote_count         -> tmdb_vote_count    (the model column is 'tmdb_vote_count')
+    """
     from app.models.movie import Movie
     movie = Movie(
         tmdb_id=tmdb_id,
@@ -72,10 +89,9 @@ async def create_test_movie(db_session, tmdb_id: int = 550, title: str = "Fight 
         overview="An insomniac office worker forms an underground fight club.",
         poster_path="/poster.jpg",
         backdrop_path="/backdrop.jpg",
-        original_language="en",
-        popularity=80.0,
-        vote_average=8.4,
-        vote_count=22000,
+        language="en",
+        tmdb_rating=8.4,
+        tmdb_vote_count=22000,
     )
     db_session.add(movie)
     await db_session.commit()
