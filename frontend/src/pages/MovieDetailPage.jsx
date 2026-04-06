@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Grid, Image, Text, Badge, Group, Rating, Textarea, Button,
   Box, Stack, Loader, Center, ActionIcon, Divider, Switch,
-  NumberInput, Tooltip, Card,
+  Tooltip, Card,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
@@ -13,6 +13,14 @@ import {
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { api, posterUrl } from '../api/client';
+
+// Format an ISO date string or Date to "06 Apr 2026"
+function fmtDate(val) {
+  if (!val) return '—';
+  const d = val instanceof Date ? val : new Date(val);
+  if (isNaN(d)) return String(val);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -35,8 +43,10 @@ export default function MovieDetailPage() {
         setWatches(w ?? []);
         setRating(e.rating ?? 0);
         setNotes(e.notes ?? '');
-        setIsFav(e.is_favourite ?? false);
-        if (e.watched_on) setWatchDate(new Date(e.watched_on));
+        // Fix bug 2: backend field is is_favorite (no 'u'), not is_favourite
+        setIsFav(e.is_favorite ?? false);
+        // Fix bug 1: backend field is first_watched_at, not watched_on
+        if (e.first_watched_at) setWatchDate(new Date(e.first_watched_at));
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -47,8 +57,9 @@ export default function MovieDetailPage() {
       const updated = await api.updateEntry(id, {
         rating,
         notes,
-        is_favourite: isFav,
-        watched_on: watchDate ? watchDate.toISOString().slice(0, 10) : null,
+        // Fix bug 1: backend EntryUpdate uses is_favorite and first_watched_at
+        is_favorite: isFav,
+        first_watched_at: watchDate ? watchDate.toISOString() : null,
       });
       setEntry(updated);
       notifications.show({ message: 'Saved!', color: 'yellow' });
@@ -61,7 +72,7 @@ export default function MovieDetailPage() {
 
   async function logRewatch() {
     try {
-      const w = await api.addWatch(id, { watched_at: new Date().toISOString().slice(0, 10) });
+      const w = await api.addWatch(id, { watched_at: new Date().toISOString() });
       setWatches(prev => [w, ...prev]);
       notifications.show({ message: 'Rewatch logged!', color: 'yellow' });
     } catch (e) {
@@ -209,7 +220,10 @@ export default function MovieDetailPage() {
           <Stack gap={6}>
             {watches.map((w, i) => (
               <Group key={w.id ?? i} gap="sm">
-                <Badge color="gray" variant="outline" size="sm">{w.watched_at ?? w.watched_on}</Badge>
+                {/* Fix minor bug 6: format raw ISO timestamp to readable date */}
+                <Badge color="gray" variant="outline" size="sm">
+                  {fmtDate(w.watched_at)}
+                </Badge>
                 {w.note && <Text size="xs" c="dimmed">{w.note}</Text>}
               </Group>
             ))}

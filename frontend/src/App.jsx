@@ -12,6 +12,7 @@ import MovieDetailPage from './pages/MovieDetailPage';
 import AddMoviePage from './pages/AddMoviePage';
 import WatchlistPage from './pages/WatchlistPage';
 import ListsPage from './pages/ListsPage';
+import ListDetailPage from './pages/ListDetailPage';
 import StatsPage from './pages/StatsPage';
 import FavouritesPage from './pages/FavouritesPage';
 import TagsPage from './pages/TagsPage';
@@ -108,14 +109,16 @@ export default function App() {
 
         <AppShell.Main>
           <Routes>
-            <Route path="/"            element={<LibraryPage />} />
-            <Route path="/movie/:id"   element={<MovieDetailPage />} />
-            <Route path="/add"         element={<AddMoviePage />} />
-            <Route path="/watchlist"   element={<WatchlistPage />} />
-            <Route path="/favourites"  element={<FavouritesPage />} />
-            <Route path="/lists"       element={<ListsPage />} />
-            <Route path="/tags"        element={<TagsPage />} />
-            <Route path="/stats"       element={<StatsPage />} />
+            <Route path="/"              element={<LibraryPage />} />
+            <Route path="/movie/:id"     element={<MovieDetailPage />} />
+            <Route path="/add"           element={<AddMoviePage />} />
+            <Route path="/watchlist"     element={<WatchlistPage />} />
+            <Route path="/favourites"    element={<FavouritesPage />} />
+            <Route path="/lists"         element={<ListsPage />} />
+            {/* Fix bug 8: add missing list detail route */}
+            <Route path="/lists/:id"     element={<ListDetailPage />} />
+            <Route path="/tags"          element={<TagsPage />} />
+            <Route path="/stats"         element={<StatsPage />} />
           </Routes>
         </AppShell.Main>
       </AppShell>

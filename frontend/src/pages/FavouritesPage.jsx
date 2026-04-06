@@ -10,7 +10,8 @@ export default function FavouritesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getEntries({ favourites: true, limit: 100 })
+    // Fix bug 3: backend param is is_favorite (not 'favourites'), per_page not limit
+    api.getEntries({ is_favorite: true, per_page: 100 })
       .then(data => setEntries(Array.isArray(data) ? data : data.items ?? []))
       .finally(() => setLoading(false));
   }, []);

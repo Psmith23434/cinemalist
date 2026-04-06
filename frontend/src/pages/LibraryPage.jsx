@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  Grid, TextInput, Select, Group, Text, Loader, Center,
-  MultiSelect, SegmentedControl, Box,
+  Grid, TextInput, Select, Group, Loader, Center,
+  SegmentedControl, Box,
 } from '@mantine/core';
 import { IconSearch, IconMovie } from '@tabler/icons-react';
 import { api } from '../api/client';
@@ -14,7 +14,7 @@ export default function LibraryPage() {
   const [loading, setLoading]   = useState(true);
   const [search,  setSearch]    = useState('');
   const [genre,   setGenre]     = useState(null);
-  const [sort,    setSort]      = useState('watched_on');
+  const [sort,    setSort]      = useState('updated_at');
   const [fav,     setFav]       = useState('all');
 
   useEffect(() => {
@@ -23,17 +23,25 @@ export default function LibraryPage() {
 
   useEffect(() => {
     setLoading(true);
-    const params = { sort_by: sort, direction: 'desc', limit: 100 };
-    if (genre)                params.genre_id   = genre;
-    if (fav === 'fav')        params.favourites  = true;
+    // Fix bug 4: use per_page (not limit) to match PaginatedResponse backend param
+    // Fix bug 4: use is_favorite (not favourites) for the favourite filter
+    const params = { per_page: 100 };
+    if (genre)         params.genre_id    = genre;
+    if (fav === 'fav') params.is_favorite = true;
     api.getEntries(params)
       .then(data => setEntries(Array.isArray(data) ? data : data.items ?? []))
       .finally(() => setLoading(false));
   }, [genre, sort, fav]);
 
-  const filtered = entries.filter(e =>
-    !search || (e.movie?.title ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  // Client-side text filter + sort (avoids extra round-trips for search-as-you-type)
+  const filtered = entries
+    .filter(e => !search || (e.movie?.title ?? '').toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (sort === 'rating')     return (b.rating ?? 0) - (a.rating ?? 0);
+      if (sort === 'created_at') return new Date(b.created_at) - new Date(a.created_at);
+      // default: last updated / watch date
+      return new Date(b.updated_at) - new Date(a.updated_at);
+    });
 
   return (
     <Box>
@@ -56,7 +64,7 @@ export default function LibraryPage() {
         />
         <Select
           data={[
-            { value: 'watched_on', label: 'Watch date' },
+            { value: 'updated_at', label: 'Recently updated' },
             { value: 'rating',     label: 'Rating' },
             { value: 'created_at', label: 'Date added' },
           ]}
