@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.models.movie import Movie
 from app.models.genre import Genre
 from app.models.movie_genre import MovieGenre
-from app.schemas.movie import MovieCreate, MovieRead, MovieSummary
+from app.schemas.movie import MovieCreate, MovieUpdate, MovieRead, MovieSummary
 from app.schemas.common import PaginatedResponse, MessageResponse
 
 router = APIRouter()
@@ -62,7 +62,7 @@ async def create_movie(body: MovieCreate, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/{movie_id}", response_model=MovieRead)
 async def update_movie(
-    movie_id: int, body: MovieCreate, db: AsyncSession = Depends(get_db)
+    movie_id: int, body: MovieUpdate, db: AsyncSession = Depends(get_db)  # Bug 6 fix: was MovieCreate
 ):
     movie = await db.get(Movie, movie_id)
     if not movie:
